@@ -18,6 +18,7 @@ interface TabletItem {
   sdCardSize: string;
   profileId: string;
   quantity: number;
+  location: string;
   serialNumbers?: string[];
 }
 
@@ -27,11 +28,12 @@ interface TVItem {
   schoolName: string;
   model: string;
   quantity: number;
+  location: string;
   serialNumbers?: string[];
 }
 
 interface Order {
-  id: string;
+  id: number;
   orderType: string;
   salesOrder: string;
   dealId: string;
@@ -68,6 +70,7 @@ const OrderManagement = () => {
 
   const tabletModels = ['TB301FU', 'TB301XU'];
   const sdCardSizes = ['64 GB', '128 GB'];
+  const locations = ['Trichy', 'Bangalore', 'Hyderabad'];
 
   const generateId = () => Math.random().toString(36).substr(2, 9);
   
@@ -83,7 +86,8 @@ const OrderManagement = () => {
       model: '',
       sdCardSize: '',
       profileId: '',
-      quantity: 1
+      quantity: 1,
+      location: ''
     };
     setTablets([...tablets, newTablet]);
   };
@@ -94,7 +98,8 @@ const OrderManagement = () => {
       nucleusId: '',
       schoolName: '',
       model: '',
-      quantity: 1
+      quantity: 1,
+      location: ''
     };
     setTVs([...tvs, newTV]);
   };
@@ -142,10 +147,10 @@ const OrderManagement = () => {
     }
 
     const newOrder: Order = {
-      id: generateId(),
+      id: orders.length + 1,
       orderType,
       salesOrder: salesOrder || generateDummyId('SO'),
-      dealId: dealId || generateDummyId('DEAL'),
+      dealId: dealId || '',
       tablets: tablets.filter(t => t.schoolName.trim()),
       tvs: tvs.filter(t => t.schoolName.trim()),
       createdAt: new Date(),
@@ -193,7 +198,7 @@ const OrderManagement = () => {
       ...selectedOrder,
       orderType,
       salesOrder: salesOrder || generateDummyId('SO'),
-      dealId: dealId || generateDummyId('DEAL'),
+      dealId: dealId || '',
       tablets: tablets.filter(t => t.schoolName.trim()),
       tvs: tvs.filter(t => t.schoolName.trim()),
       updatedAt: new Date()
@@ -222,6 +227,28 @@ const OrderManagement = () => {
 
   const updateSerialNumber = (itemId: string, index: number, value: string, type: 'tablet' | 'tv') => {
     if (!selectedOrder) return;
+
+    // Check for duplicate serial number in the same sales order
+    const allSerialNumbers: string[] = [];
+    selectedOrder.tablets.forEach(tablet => {
+      if (tablet.serialNumbers) {
+        allSerialNumbers.push(...tablet.serialNumbers.filter(sn => sn.trim()));
+      }
+    });
+    selectedOrder.tvs.forEach(tv => {
+      if (tv.serialNumbers) {
+        allSerialNumbers.push(...tv.serialNumbers.filter(sn => sn.trim()));
+      }
+    });
+
+    if (value.trim() && allSerialNumbers.includes(value.trim())) {
+      toast({
+        title: "Duplicate Serial Number",
+        description: "This serial number already exists in this order",
+        variant: "destructive"
+      });
+      return;
+    }
 
     const updatedOrder = { ...selectedOrder };
     
@@ -265,7 +292,7 @@ const OrderManagement = () => {
     });
   };
 
-  const deleteOrder = (id: string) => {
+  const deleteOrder = (id: number) => {
     setOrders(orders.filter(order => order.id !== id));
     toast({
       title: "Success",
@@ -286,31 +313,69 @@ const OrderManagement = () => {
 
     const csvContent = [
       // Headers
-      ['Order ID', 'Order Type', 'Sales Order', 'Deal ID', 'Device Type', 'School Name', 'Model', 'Quantity', 'Created At'],
-      // Data rows
+      ['Order ID', 'Order Type', 'Sales Order', 'Deal ID', 'Device Type', 'School Name', 'Model', 'Location', 'Serial Number', 'Created At'],
+      // Data rows - one row per serial number
       ...orders.flatMap(order => [
-        ...order.tablets.map(tablet => [
-          order.id,
-          order.orderType,
-          order.salesOrder,
-          order.dealId,
-          'Tablet',
-          tablet.schoolName,
-          tablet.model,
-          tablet.quantity.toString(),
-          order.createdAt.toISOString()
-        ]),
-        ...order.tvs.map(tv => [
-          order.id,
-          order.orderType,
-          order.salesOrder,
-          order.dealId,
-          'TV',
-          tv.schoolName,
-          tv.model,
-          tv.quantity.toString(),
-          order.createdAt.toISOString()
-        ])
+        ...order.tablets.flatMap(tablet => {
+          if (tablet.serialNumbers && tablet.serialNumbers.length > 0) {
+            return tablet.serialNumbers.map(serialNumber => [
+              order.id.toString(),
+              order.orderType,
+              order.salesOrder,
+              order.dealId,
+              'Tablet',
+              tablet.schoolName,
+              tablet.model,
+              tablet.location,
+              serialNumber || '',
+              order.createdAt.toISOString()
+            ]);
+          } else {
+            // If no serial numbers, create rows based on quantity
+            return Array.from({ length: tablet.quantity }, () => [
+              order.id.toString(),
+              order.orderType,
+              order.salesOrder,
+              order.dealId,
+              'Tablet',
+              tablet.schoolName,
+              tablet.model,
+              tablet.location,
+              '',
+              order.createdAt.toISOString()
+            ]);
+          }
+        }),
+        ...order.tvs.flatMap(tv => {
+          if (tv.serialNumbers && tv.serialNumbers.length > 0) {
+            return tv.serialNumbers.map(serialNumber => [
+              order.id.toString(),
+              order.orderType,
+              order.salesOrder,
+              order.dealId,
+              'TV',
+              tv.schoolName,
+              tv.model,
+              tv.location,
+              serialNumber || '',
+              order.createdAt.toISOString()
+            ]);
+          } else {
+            // If no serial numbers, create rows based on quantity
+            return Array.from({ length: tv.quantity }, () => [
+              order.id.toString(),
+              order.orderType,
+              order.salesOrder,
+              order.dealId,
+              'TV',
+              tv.schoolName,
+              tv.model,
+              tv.location,
+              '',
+              order.createdAt.toISOString()
+            ]);
+          }
+        })
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -531,6 +596,22 @@ const OrderManagement = () => {
                           />
                         </div>
                         <div className="space-y-2">
+                          <Label>Location</Label>
+                          <Select
+                            value={tablet.location}
+                            onValueChange={(value) => updateTablet(tablet.id, 'location', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {locations.map(location => (
+                                <SelectItem key={location} value={location}>{location}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
                           <Label>Quantity</Label>
                           <Input
                             type="number"
@@ -594,6 +675,22 @@ const OrderManagement = () => {
                             <SelectContent>
                               {tabletModels.map(model => (
                                 <SelectItem key={model} value={model}>{model}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Location</Label>
+                          <Select
+                            value={tv.location}
+                            onValueChange={(value) => updateTV(tv.id, 'location', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {locations.map(location => (
+                                <SelectItem key={location} value={location}>{location}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -935,6 +1032,22 @@ const OrderManagement = () => {
                           />
                         </div>
                         <div className="space-y-2">
+                          <Label>Location</Label>
+                          <Select
+                            value={tablet.location}
+                            onValueChange={(value) => updateTablet(tablet.id, 'location', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {locations.map(location => (
+                                <SelectItem key={location} value={location}>{location}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
                           <Label>Quantity</Label>
                           <Input
                             type="number"
@@ -998,6 +1111,22 @@ const OrderManagement = () => {
                             <SelectContent>
                               {tabletModels.map(model => (
                                 <SelectItem key={model} value={model}>{model}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Location</Label>
+                          <Select
+                            value={tv.location}
+                            onValueChange={(value) => updateTV(tv.id, 'location', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {locations.map(location => (
+                                <SelectItem key={location} value={location}>{location}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
