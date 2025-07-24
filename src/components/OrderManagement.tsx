@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, Search, Download, Menu, ShoppingCart, Eye, Edit, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Search, Download, Menu, ShoppingCart, Eye, Edit, ExternalLink, BarChart3 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
@@ -46,7 +46,7 @@ interface Order {
 
 const OrderManagement = () => {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [currentView, setCurrentView] = useState<'create' | 'view' | 'serial-entry' | 'edit'>('create');
+  const [currentView, setCurrentView] = useState<'create' | 'view' | 'serial-entry' | 'edit' | 'dashboard'>('create');
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -65,6 +65,7 @@ const OrderManagement = () => {
     'Stock movement',
     'Return',
     'Employee',
+    'Stock',
     'Other'
   ];
 
@@ -394,6 +395,32 @@ const OrderManagement = () => {
     });
   };
 
+  const calculateSummary = () => {
+    const summary = { inward: 0, outward: 0, available: 0 };
+    
+    orders.forEach(order => {
+      order.tablets.forEach(tablet => {
+        const serialCount = tablet.serialNumbers?.length || 0;
+        if (order.orderType === 'Stock' || order.orderType === 'Return') {
+          summary.inward += serialCount;
+        } else {
+          summary.outward += serialCount;
+        }
+      });
+      order.tvs.forEach(tv => {
+        const serialCount = tv.serialNumbers?.length || 0;
+        if (order.orderType === 'Stock' || order.orderType === 'Return') {
+          summary.inward += serialCount;
+        } else {
+          summary.outward += serialCount;
+        }
+      });
+    });
+    
+    summary.available = summary.inward - summary.outward;
+    return summary;
+  };
+
   const filteredOrders = orders.filter(order => 
     order.salesOrder.toLowerCase().includes(searchTerm.toLowerCase()) ||
     order.dealId.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -443,6 +470,17 @@ const OrderManagement = () => {
                   >
                     <Eye className="h-4 w-4 mr-2" />
                     View existing order
+                  </Button>
+                  <Button
+                    variant={currentView === 'dashboard' ? 'default' : 'ghost'}
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setCurrentView('dashboard');
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Dashboard
                   </Button>
                 </div>
               </div>
@@ -1160,6 +1198,47 @@ const OrderManagement = () => {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {currentView === 'dashboard' && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Dashboard Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-green-600">
+                      {calculateSummary().inward}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Inward</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      (Stock, Return)
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-red-600">
+                      {calculateSummary().outward}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Outward</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      (All other order types)
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600">
+                      {calculateSummary().available}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Available</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      (Inward - Outward)
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </main>
     </div>
