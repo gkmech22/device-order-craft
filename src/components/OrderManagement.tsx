@@ -46,10 +46,11 @@ interface Order {
 
 const OrderManagement = () => {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [currentView, setCurrentView] = useState<'create' | 'view' | 'serial-entry' | 'edit' | 'dashboard'>('create');
+  const [currentView, setCurrentView] = useState<'create' | 'view' | 'serial-entry' | 'edit' | 'warehouse'>('create');
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('Trichy');
   
   // Form states
   const [orderType, setOrderType] = useState('');
@@ -421,12 +422,32 @@ const OrderManagement = () => {
     return summary;
   };
 
-  const filteredOrders = orders.filter(order => 
-    order.salesOrder.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.dealId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.tablets.some(t => t.nucleusId?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    order.tvs.some(t => t.nucleusId?.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const handleSearch = () => {
+    const filteredResults = orders.filter(order => 
+      order.salesOrder.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.dealId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.tablets.some(t => 
+        t.nucleusId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.serialNumbers && t.serialNumbers.some(sn => sn.toLowerCase().includes(searchTerm.toLowerCase())))
+      ) ||
+      order.tvs.some(t => 
+        t.nucleusId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.serialNumbers && t.serialNumbers.some(sn => sn.toLowerCase().includes(searchTerm.toLowerCase())))
+      )
+    );
+    
+    if (filteredResults.length === 0 && searchTerm) {
+      toast({
+        title: "No Results",
+        description: "No orders found matching your search criteria",
+        variant: "destructive"
+      });
+    }
+    
+    return filteredResults;
+  };
+
+  const filteredOrders = searchTerm ? handleSearch() : orders;
 
   return (
     <div className="min-h-screen bg-background">
@@ -472,15 +493,15 @@ const OrderManagement = () => {
                     View existing order
                   </Button>
                   <Button
-                    variant={currentView === 'dashboard' ? 'default' : 'ghost'}
+                    variant={currentView === 'warehouse' ? 'default' : 'ghost'}
                     className="w-full justify-start"
                     onClick={() => {
-                      setCurrentView('dashboard');
+                      setCurrentView('warehouse');
                       setSidebarOpen(false);
                     }}
                   >
                     <BarChart3 className="h-4 w-4 mr-2" />
-                    Dashboard
+                    Warehouse
                   </Button>
                 </div>
               </div>
@@ -496,14 +517,20 @@ const OrderManagement = () => {
           </SheetContent>
         </Sheet>
 
-        <div className="flex-1 max-w-md relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search Sales order, Deal ID, or Device number..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+        <div className="flex-1 max-w-md relative flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search Sales order, Deal ID, or Device number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="pl-10"
+            />
+          </div>
+          <Button onClick={() => handleSearch()} variant="outline" size="icon">
+            <Search className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
@@ -1200,13 +1227,27 @@ const OrderManagement = () => {
           </Card>
         )}
 
-        {currentView === 'dashboard' && (
+        {currentView === 'warehouse' && (
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Dashboard Summary</CardTitle>
+                <CardTitle>Warehouse Summary</CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="mb-6">
+                  <Label htmlFor="warehouse">Select Warehouse</Label>
+                  <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                    <SelectTrigger className="w-full max-w-xs">
+                      <SelectValue placeholder="Select warehouse" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {locations.map(location => (
+                        <SelectItem key={location} value={location}>{location}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="text-center">
                     <div className="text-3xl font-bold text-green-600">
@@ -1235,6 +1276,10 @@ const OrderManagement = () => {
                       (Inward - Outward)
                     </div>
                   </div>
+                </div>
+                
+                <div className="text-center text-sm text-muted-foreground mt-4">
+                  Showing data for: <strong>{selectedWarehouse}</strong> warehouse
                 </div>
               </CardContent>
             </Card>
