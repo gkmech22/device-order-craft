@@ -593,14 +593,6 @@ const OrderManagement = () => {
                   </Button>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={downloadCSV}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download CSV
-              </Button>
             </div>
           </SheetContent>
         </Sheet>
@@ -1318,8 +1310,12 @@ const OrderManagement = () => {
         {currentView === 'devices' && (
           <div className="space-y-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>All Devices</CardTitle>
+                <Button onClick={downloadCSV} variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download CSV
+                </Button>
               </CardHeader>
               <CardContent>
                 {generateDeviceRows().length === 0 ? (
