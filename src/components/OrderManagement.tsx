@@ -9,6 +9,7 @@ import { Plus, Trash2, Search, Download, Menu, ShoppingCart, Eye, Edit, External
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface TabletItem {
   id: string;
@@ -46,7 +47,7 @@ interface Order {
 
 const OrderManagement = () => {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [currentView, setCurrentView] = useState<'create' | 'view' | 'serial-entry' | 'edit' | 'warehouse'>('create');
+  const [currentView, setCurrentView] = useState<'create' | 'view' | 'serial-entry' | 'edit' | 'warehouse' | 'devices'>('create');
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -449,6 +450,82 @@ const OrderManagement = () => {
 
   const filteredOrders = searchTerm ? handleSearch() : orders;
 
+  const generateDeviceRows = () => {
+    const deviceRows: Array<{
+      createdAt: Date;
+      orderType: string;
+      orderId: number;
+      salesOrder: string;
+      dealId: string;
+      nucleusId: string;
+      schoolName: string;
+      product: string;
+      model: string;
+      quantity: number;
+      deviceNumber: string;
+      sdCardSize: string;
+      profileId: string;
+      location: string;
+    }> = [];
+
+    orders.forEach(order => {
+      // Process tablets
+      order.tablets.forEach(tablet => {
+        if (tablet.serialNumbers && tablet.serialNumbers.length > 0) {
+          tablet.serialNumbers.forEach(serialNumber => {
+            if (serialNumber && serialNumber.trim()) {
+              deviceRows.push({
+                createdAt: order.createdAt,
+                orderType: order.orderType,
+                orderId: order.id,
+                salesOrder: order.salesOrder,
+                dealId: order.dealId,
+                nucleusId: tablet.nucleusId || '',
+                schoolName: tablet.schoolName,
+                product: 'Tablet',
+                model: tablet.model,
+                quantity: tablet.quantity,
+                deviceNumber: serialNumber,
+                sdCardSize: tablet.sdCardSize,
+                profileId: tablet.profileId,
+                location: tablet.location
+              });
+            }
+          });
+        }
+      });
+
+      // Process TVs
+      order.tvs.forEach(tv => {
+        if (tv.serialNumbers && tv.serialNumbers.length > 0) {
+          tv.serialNumbers.forEach(serialNumber => {
+            if (serialNumber && serialNumber.trim()) {
+              deviceRows.push({
+                createdAt: order.createdAt,
+                orderType: order.orderType,
+                orderId: order.id,
+                salesOrder: order.salesOrder,
+                dealId: order.dealId,
+                nucleusId: tv.nucleusId || '',
+                schoolName: tv.schoolName,
+                product: 'TV',
+                model: tv.model,
+                quantity: tv.quantity,
+                deviceNumber: serialNumber,
+                sdCardSize: '', // TVs don't have SD cards
+                profileId: '', // TVs don't have profile IDs
+                location: tv.location
+              });
+            }
+          });
+        }
+      });
+    });
+
+    // Sort by creation date (newest first)
+    return deviceRows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -491,6 +568,17 @@ const OrderManagement = () => {
                   >
                     <Eye className="h-4 w-4 mr-2" />
                     View existing order
+                  </Button>
+                  <Button
+                    variant={currentView === 'devices' ? 'default' : 'ghost'}
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setCurrentView('devices');
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Devices
                   </Button>
                   <Button
                     variant={currentView === 'warehouse' ? 'default' : 'ghost'}
@@ -1225,6 +1313,70 @@ const OrderManagement = () => {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {currentView === 'devices' && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>All Devices</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {generateDeviceRows().length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No devices found
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Created At</TableHead>
+                          <TableHead>Order Type</TableHead>
+                          <TableHead>Order ID</TableHead>
+                          <TableHead>Sales Order</TableHead>
+                          <TableHead>Deal ID</TableHead>
+                          <TableHead>Nucleus ID</TableHead>
+                          <TableHead>School Name</TableHead>
+                          <TableHead>Product</TableHead>
+                          <TableHead>Model</TableHead>
+                          <TableHead>Quantity</TableHead>
+                          <TableHead>Device Number</TableHead>
+                          <TableHead>SD Card Size</TableHead>
+                          <TableHead>Profile ID</TableHead>
+                          <TableHead>Location</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {generateDeviceRows().map((device, index) => (
+                          <TableRow key={index}>
+                            <TableCell>{device.createdAt.toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{device.orderType}</Badge>
+                            </TableCell>
+                            <TableCell>#{device.orderId}</TableCell>
+                            <TableCell>{device.salesOrder}</TableCell>
+                            <TableCell>{device.dealId}</TableCell>
+                            <TableCell>{device.nucleusId}</TableCell>
+                            <TableCell className="font-medium">{device.schoolName}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{device.product}</Badge>
+                            </TableCell>
+                            <TableCell>{device.model}</TableCell>
+                            <TableCell>{device.quantity}</TableCell>
+                            <TableCell className="font-mono text-sm">{device.deviceNumber}</TableCell>
+                            <TableCell>{device.sdCardSize}</TableCell>
+                            <TableCell>{device.profileId}</TableCell>
+                            <TableCell>{device.location}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {currentView === 'warehouse' && (
