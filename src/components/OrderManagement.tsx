@@ -51,7 +51,7 @@ const OrderManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('Trichy');
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('All');
   
   // Form states
   const [orderType, setOrderType] = useState('');
@@ -71,9 +71,11 @@ const OrderManagement = () => {
     'Other'
   ];
 
-  const tabletModels = ['TB301FU', 'TB301XU'];
+  const tabletModels = ['TB301FU', 'TB301FX', 'TB-8505F', 'TB-7306F', 'TB-7306X', 'TB-7305X'];
+  const tvModels = ['Hyundai TV - 39"', 'Hyundai TV - 43"', 'Hyundai TV - 50"', 'Hyundai TV - 55"', 'Hyundai TV - 65"', 'Xentec TV - 39"', 'Xentec TV - 43"'];
   const sdCardSizes = ['64 GB', '128 GB'];
-  const locations = ['Trichy', 'Bangalore', 'Hyderabad'];
+  const locations = ['Trichy', 'Bangalore', 'Hyderabad', 'Kolkata', 'Bhiwandi', 'Ghaziabad', 'Zirakpur', 'Indore', 'Jaipur'];
+  const warehouseOptions = ['All', 'Trichy', 'Bangalore', 'Hyderabad', 'Kolkata', 'Bhiwandi', 'Ghaziabad', 'Zirakpur', 'Indore', 'Jaipur'];
 
   const generateId = () => Math.random().toString(36).substr(2, 9);
   
@@ -398,23 +400,35 @@ const OrderManagement = () => {
   };
 
   const calculateSummary = () => {
-    const summary = { inward: 0, outward: 0, available: 0 };
+    const summary = { inward: 0, outward: 0, available: 0, updatedAt: new Date() };
     
-    orders.forEach(order => {
+    let filteredOrders = orders;
+    if (selectedWarehouse !== 'All') {
+      filteredOrders = orders.filter(order => 
+        order.tablets.some(tablet => tablet.location === selectedWarehouse) ||
+        order.tvs.some(tv => tv.location === selectedWarehouse)
+      );
+    }
+    
+    filteredOrders.forEach(order => {
       order.tablets.forEach(tablet => {
-        const serialCount = tablet.serialNumbers?.length || 0;
-        if (order.orderType === 'Stock' || order.orderType === 'Return') {
-          summary.inward += serialCount;
-        } else {
-          summary.outward += serialCount;
+        if (selectedWarehouse === 'All' || tablet.location === selectedWarehouse) {
+          const serialCount = tablet.serialNumbers?.length || 0;
+          if (order.orderType === 'Stock' || order.orderType === 'Return') {
+            summary.inward += serialCount;
+          } else {
+            summary.outward += serialCount;
+          }
         }
       });
       order.tvs.forEach(tv => {
-        const serialCount = tv.serialNumbers?.length || 0;
-        if (order.orderType === 'Stock' || order.orderType === 'Return') {
-          summary.inward += serialCount;
-        } else {
-          summary.outward += serialCount;
+        if (selectedWarehouse === 'All' || tv.location === selectedWarehouse) {
+          const serialCount = tv.serialNumbers?.length || 0;
+          if (order.orderType === 'Stock' || order.orderType === 'Return') {
+            summary.inward += serialCount;
+          } else {
+            summary.outward += serialCount;
+          }
         }
       });
     });
@@ -1254,7 +1268,7 @@ const OrderManagement = () => {
                               <SelectValue placeholder="Select model" />
                             </SelectTrigger>
                             <SelectContent>
-                              {tabletModels.map(model => (
+                              {tvModels.map(model => (
                                 <SelectItem key={model} value={model}>{model}</SelectItem>
                               ))}
                             </SelectContent>
@@ -1389,8 +1403,8 @@ const OrderManagement = () => {
                       <SelectValue placeholder="Select warehouse" />
                     </SelectTrigger>
                     <SelectContent>
-                      {locations.map(location => (
-                        <SelectItem key={location} value={location}>{location}</SelectItem>
+                      {warehouseOptions.map(option => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1427,7 +1441,10 @@ const OrderManagement = () => {
                 </div>
                 
                 <div className="text-center text-sm text-muted-foreground mt-4">
-                  Showing data for: <strong>{selectedWarehouse}</strong> warehouse
+                  <div>Showing data for: <strong>{selectedWarehouse}</strong> warehouse</div>
+                  <div className="mt-1">
+                    Updated at: {calculateSummary().updatedAt.toLocaleString()}
+                  </div>
                 </div>
               </CardContent>
             </Card>
