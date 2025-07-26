@@ -52,6 +52,7 @@ const OrderManagement = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('All');
+  const [selectedProduct, setSelectedProduct] = useState<string>('All');
   
   // Form states
   const [orderType, setOrderType] = useState('');
@@ -71,11 +72,12 @@ const OrderManagement = () => {
     'Other'
   ];
 
-  const tabletModels = ['TB301FU', 'TB301FX', 'TB-8505F', 'TB-7306F', 'TB-7306X', 'TB-7305X'];
+  const tabletModels = ['TB301FU', 'TB301XU', 'TB-8505F', 'TB-7306F', 'TB-7306X', 'TB-7305X'];
   const tvModels = ['Hyundai TV - 39"', 'Hyundai TV - 43"', 'Hyundai TV - 50"', 'Hyundai TV - 55"', 'Hyundai TV - 65"', 'Xentec TV - 39"', 'Xentec TV - 43"'];
   const sdCardSizes = ['64 GB', '128 GB'];
   const locations = ['Trichy', 'Bangalore', 'Hyderabad', 'Kolkata', 'Bhiwandi', 'Ghaziabad', 'Zirakpur', 'Indore', 'Jaipur'];
   const warehouseOptions = ['All', 'Trichy', 'Bangalore', 'Hyderabad', 'Kolkata', 'Bhiwandi', 'Ghaziabad', 'Zirakpur', 'Indore', 'Jaipur'];
+  const productOptions = ['All', 'Tablet', 'TV'];
 
   const generateId = () => Math.random().toString(36).substr(2, 9);
   
@@ -400,7 +402,11 @@ const OrderManagement = () => {
   };
 
   const calculateSummary = () => {
-    const summary = { inward: 0, outward: 0, available: 0, updatedAt: new Date() };
+    const summary = { 
+      overall: { inward: 0, outward: 0, available: 0 },
+      byProduct: {} as Record<string, Record<string, { inward: number, outward: number, available: number }>>,
+      updatedAt: new Date() 
+    };
     
     let filteredOrders = orders;
     if (selectedWarehouse !== 'All') {
@@ -411,29 +417,65 @@ const OrderManagement = () => {
     }
     
     filteredOrders.forEach(order => {
-      order.tablets.forEach(tablet => {
-        if (selectedWarehouse === 'All' || tablet.location === selectedWarehouse) {
-          const serialCount = tablet.serialNumbers?.length || 0;
-          if (order.orderType === 'Stock' || order.orderType === 'Return') {
-            summary.inward += serialCount;
-          } else {
-            summary.outward += serialCount;
+      // Process tablets
+      if (selectedProduct === 'All' || selectedProduct === 'Tablet') {
+        order.tablets.forEach(tablet => {
+          if (selectedWarehouse === 'All' || tablet.location === selectedWarehouse) {
+            const serialCount = tablet.serialNumbers?.length || 0;
+            const isInward = order.orderType === 'Stock' || order.orderType === 'Return';
+            
+            // Initialize product tracking
+            if (!summary.byProduct['Tablet']) summary.byProduct['Tablet'] = {};
+            if (!summary.byProduct['Tablet'][tablet.model]) {
+              summary.byProduct['Tablet'][tablet.model] = { inward: 0, outward: 0, available: 0 };
+            }
+            
+            if (isInward) {
+              summary.overall.inward += serialCount;
+              summary.byProduct['Tablet'][tablet.model].inward += serialCount;
+            } else {
+              summary.overall.outward += serialCount;
+              summary.byProduct['Tablet'][tablet.model].outward += serialCount;
+            }
           }
-        }
-      });
-      order.tvs.forEach(tv => {
-        if (selectedWarehouse === 'All' || tv.location === selectedWarehouse) {
-          const serialCount = tv.serialNumbers?.length || 0;
-          if (order.orderType === 'Stock' || order.orderType === 'Return') {
-            summary.inward += serialCount;
-          } else {
-            summary.outward += serialCount;
+        });
+      }
+      
+      // Process TVs
+      if (selectedProduct === 'All' || selectedProduct === 'TV') {
+        order.tvs.forEach(tv => {
+          if (selectedWarehouse === 'All' || tv.location === selectedWarehouse) {
+            const serialCount = tv.serialNumbers?.length || 0;
+            const isInward = order.orderType === 'Stock' || order.orderType === 'Return';
+            
+            // Initialize product tracking
+            if (!summary.byProduct['TV']) summary.byProduct['TV'] = {};
+            if (!summary.byProduct['TV'][tv.model]) {
+              summary.byProduct['TV'][tv.model] = { inward: 0, outward: 0, available: 0 };
+            }
+            
+            if (isInward) {
+              summary.overall.inward += serialCount;
+              summary.byProduct['TV'][tv.model].inward += serialCount;
+            } else {
+              summary.overall.outward += serialCount;
+              summary.byProduct['TV'][tv.model].outward += serialCount;
+            }
           }
-        }
+        });
+      }
+    });
+    
+    // Calculate available counts
+    summary.overall.available = summary.overall.inward - summary.overall.outward;
+    
+    Object.keys(summary.byProduct).forEach(productType => {
+      Object.keys(summary.byProduct[productType]).forEach(model => {
+        const product = summary.byProduct[productType][model];
+        product.available = product.inward - product.outward;
       });
     });
     
-    summary.available = summary.inward - summary.outward;
     return summary;
   };
 
@@ -1396,52 +1438,103 @@ const OrderManagement = () => {
                 <CardTitle>Warehouse Summary</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="mb-6">
-                  <Label htmlFor="warehouse">Select Warehouse</Label>
-                  <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-                    <SelectTrigger className="w-full max-w-xs">
-                      <SelectValue placeholder="Select warehouse" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouseOptions.map(option => (
-                        <SelectItem key={option} value={option}>{option}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <Label htmlFor="warehouse">Select Warehouse</Label>
+                    <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select warehouse" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {warehouseOptions.map(option => (
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="product">Select Product</Label>
+                    <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select product" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {productOptions.map(option => (
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                   <div className="text-center">
                     <div className="text-3xl font-bold text-green-600">
-                      {calculateSummary().inward}
+                      {calculateSummary().overall.inward}
                     </div>
-                    <div className="text-sm text-muted-foreground">Inward</div>
+                    <div className="text-sm text-muted-foreground">Total Inward</div>
                     <div className="text-xs text-muted-foreground mt-1">
                       (Stock, Return)
                     </div>
                   </div>
                   <div className="text-center">
                     <div className="text-3xl font-bold text-red-600">
-                      {calculateSummary().outward}
+                      {calculateSummary().overall.outward}
                     </div>
-                    <div className="text-sm text-muted-foreground">Outward</div>
+                    <div className="text-sm text-muted-foreground">Total Outward</div>
                     <div className="text-xs text-muted-foreground mt-1">
                       (All other order types)
                     </div>
                   </div>
                   <div className="text-center">
                     <div className="text-3xl font-bold text-blue-600">
-                      {calculateSummary().available}
+                      {calculateSummary().overall.available}
                     </div>
-                    <div className="text-sm text-muted-foreground">Available</div>
+                    <div className="text-sm text-muted-foreground">Total Available</div>
                     <div className="text-xs text-muted-foreground mt-1">
                       (Inward - Outward)
                     </div>
                   </div>
                 </div>
+
+                {/* Product-wise breakdown */}
+                <div className="space-y-4">
+                  {Object.entries(calculateSummary().byProduct).map(([productType, models]) => (
+                    <Card key={productType}>
+                      <CardHeader>
+                        <CardTitle className="text-lg">{productType} Summary</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2 px-2">Model</th>
+                                <th className="text-center py-2 px-2 text-green-600">Inward</th>
+                                <th className="text-center py-2 px-2 text-red-600">Outward</th>
+                                <th className="text-center py-2 px-2 text-blue-600">Available</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(models).map(([model, counts]) => (
+                                <tr key={model} className="border-b hover:bg-muted/50">
+                                  <td className="py-2 px-2 font-medium">{model}</td>
+                                  <td className="text-center py-2 px-2 text-green-600 font-semibold">{counts.inward}</td>
+                                  <td className="text-center py-2 px-2 text-red-600 font-semibold">{counts.outward}</td>
+                                  <td className="text-center py-2 px-2 text-blue-600 font-semibold">{counts.available}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
                 
                 <div className="text-center text-sm text-muted-foreground mt-4">
-                  <div>Showing data for: <strong>{selectedWarehouse}</strong> warehouse</div>
+                  <div>Showing data for: <strong>{selectedWarehouse}</strong> warehouse, <strong>{selectedProduct}</strong> product</div>
                   <div className="mt-1">
                     Updated at: {calculateSummary().updatedAt.toLocaleString()}
                   </div>
