@@ -54,9 +54,12 @@ public class OrderManagementApp {
                     viewWarehouseSummary();
                     break;
                 case 7:
-                    viewOrdersByWarehouse();
+                    viewWarehouseSummaryByLocation();
                     break;
                 case 8:
+                    viewOrdersByWarehouse();
+                    break;
+                case 9:
                     System.out.println("Goodbye!");
                     return;
                 default:
@@ -76,8 +79,9 @@ public class OrderManagementApp {
         System.out.println("4. Search Devices");
         System.out.println("5. Export CSV");
         System.out.println("6. View Warehouse Summary");
-        System.out.println("7. View Orders by Warehouse");
-        System.out.println("8. Exit");
+        System.out.println("7. View Warehouse Summary by Location");
+        System.out.println("8. View Orders by Warehouse");
+        System.out.println("9. Exit");
         System.out.print("Choose an option: ");
     }
     
@@ -204,27 +208,97 @@ public class OrderManagementApp {
     }
     
     private void viewWarehouseSummary() {
-        System.out.println("\n=== Warehouse Summary ===");
+        System.out.println("\n=== Warehouse Summary (All Locations) ===");
         Map<String, WarehouseService.WarehouseSummary> summary = controller.getWarehouseSummary();
         
         if (summary.isEmpty()) {
             System.out.println("No warehouse data available.");
         } else {
             for (WarehouseService.WarehouseSummary warehouseSummary : summary.values()) {
-                System.out.println("\nWarehouse: " + warehouseSummary.getWarehouseName());
-                System.out.println("Total Orders: " + warehouseSummary.getTotalOrders());
-                System.out.println("Total Devices: " + warehouseSummary.getTotalDevices());
-                System.out.println("Total Quantity: " + warehouseSummary.getTotalQuantity());
-                
-                if (warehouseSummary.getOrderTypes() != null && !warehouseSummary.getOrderTypes().isEmpty()) {
-                    System.out.println("Order Types:");
-                    warehouseSummary.getOrderTypes().forEach((type, count) -> 
-                        System.out.println("  " + type + ": " + count));
-                }
-                
-                System.out.println("---");
+                printWarehouseSummaryDetails(warehouseSummary);
             }
         }
+    }
+
+    private void viewWarehouseSummaryByLocation() {
+        System.out.println("\n=== Available Warehouses ===");
+        List<String> warehouses = controller.getAllWarehouses();
+        
+        if (warehouses.isEmpty()) {
+            System.out.println("No warehouses available.");
+            return;
+        }
+        
+        for (int i = 0; i < warehouses.size(); i++) {
+            System.out.println((i + 1) + ". " + warehouses.get(i));
+        }
+        
+        System.out.print("Select warehouse location: ");
+        try {
+            int choice = Integer.parseInt(scanner.nextLine()) - 1;
+            if (choice >= 0 && choice < warehouses.size()) {
+                String selectedLocation = warehouses.get(choice);
+                System.out.println("\n=== Warehouse Summary for " + selectedLocation + " ===");
+                
+                Map<String, WarehouseService.WarehouseSummary> summary = 
+                    controller.getWarehouseSummaryByLocation(selectedLocation);
+                
+                if (summary.isEmpty()) {
+                    System.out.println("No data available for this location.");
+                } else {
+                    for (WarehouseService.WarehouseSummary warehouseSummary : summary.values()) {
+                        printWarehouseSummaryDetails(warehouseSummary);
+                    }
+                }
+            } else {
+                System.out.println("Invalid selection!");
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid input.");
+        }
+    }
+
+    private void printWarehouseSummaryDetails(WarehouseService.WarehouseSummary warehouseSummary) {
+        System.out.println("\nWarehouse: " + warehouseSummary.getWarehouseName());
+        System.out.println("Total Orders: " + warehouseSummary.getTotalOrders());
+        System.out.println("Total Devices: " + warehouseSummary.getTotalDevices());
+        System.out.println("Total Quantity: " + warehouseSummary.getTotalQuantity());
+        if (warehouseSummary.getUpdatedAt() != null) {
+            System.out.println("Updated At: " + warehouseSummary.getUpdatedAt());
+        }
+        
+        System.out.println("\nStock Details:");
+        if (warehouseSummary.getInwardStock() != null && !warehouseSummary.getInwardStock().isEmpty()) {
+            System.out.println("Inward Stock:");
+            warehouseSummary.getInwardStock().forEach((product, quantity) -> 
+                System.out.println("  " + product + ": " + quantity));
+        }
+        
+        if (warehouseSummary.getOutwardStock() != null && !warehouseSummary.getOutwardStock().isEmpty()) {
+            System.out.println("Outward Stock:");
+            warehouseSummary.getOutwardStock().forEach((product, quantity) -> 
+                System.out.println("  " + product + ": " + quantity));
+        }
+        
+        if (warehouseSummary.getAvailableStock() != null && !warehouseSummary.getAvailableStock().isEmpty()) {
+            System.out.println("Available Stock:");
+            warehouseSummary.getAvailableStock().forEach((product, quantity) -> 
+                System.out.println("  " + product + ": " + quantity));
+        }
+        
+        if (warehouseSummary.getOrderTypes() != null && !warehouseSummary.getOrderTypes().isEmpty()) {
+            System.out.println("Order Types:");
+            warehouseSummary.getOrderTypes().forEach((type, count) -> 
+                System.out.println("  " + type + ": " + count));
+        }
+        
+        if (warehouseSummary.getProductSummary() != null && !warehouseSummary.getProductSummary().isEmpty()) {
+            System.out.println("Product Summary:");
+            warehouseSummary.getProductSummary().forEach((product, quantity) -> 
+                System.out.println("  " + product + ": " + quantity));
+        }
+        
+        System.out.println("---");
     }
     
     private void viewOrdersByWarehouse() {

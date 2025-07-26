@@ -100,6 +100,13 @@ public class OrderManagementController {
     }
 
     /**
+     * Get warehouse summary by location
+     */
+    public Map<String, WarehouseService.WarehouseSummary> getWarehouseSummaryByLocation(String location) {
+        return warehouseService.getWarehouseSummary(location);
+    }
+
+    /**
      * Get all warehouses
      */
     public List<String> getAllWarehouses() {

@@ -4,6 +4,7 @@ import com.warehouse.model.Order;
 import com.warehouse.model.Device;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.time.LocalDateTime;
 
 public class WarehouseService {
     
@@ -13,45 +14,70 @@ public class WarehouseService {
         this.orderService = orderService;
     }
 
+    // Predefined warehouse locations
+    private static final List<String> WAREHOUSE_LOCATIONS = Arrays.asList(
+        "Trichy", "Bangalore", "Hyderabad", "Kolkata", "Bhiwandi", 
+        "Ghaziabad", "Zirakpur", "Indore", "Jaipur"
+    );
+
+    // Predefined tablet models
+    private static final List<String> TABLET_MODELS = Arrays.asList(
+        "TB301FU", "TB301FX", "TB-8505F", "TB-7306F", "TB-7306X", "TB-7305X"
+    );
+
+    // Predefined TV models
+    private static final List<String> TV_MODELS = Arrays.asList(
+        "Hyundai TV - 39\"", "Hyundai TV - 43\"", "Hyundai TV - 50\"", 
+        "Hyundai TV - 55\"", "Hyundai TV - 65\"", "Xentec TV - 39\"", "Xentec TV - 43\""
+    );
+
     /**
-     * Get all available warehouses
+     * Get all available warehouses including 'All' option
      */
     public List<String> getAllWarehouses() {
-        return orderService.getUniqueWarehouses();
+        List<String> warehouses = new ArrayList<>();
+        warehouses.add("All");
+        warehouses.addAll(WAREHOUSE_LOCATIONS);
+        return warehouses;
     }
 
     /**
      * Get warehouse summary with order and device counts
      */
     public Map<String, WarehouseSummary> getWarehouseSummary() {
+        return getWarehouseSummary("All");
+    }
+
+    /**
+     * Get warehouse summary filtered by location
+     */
+    public Map<String, WarehouseSummary> getWarehouseSummary(String selectedLocation) {
         Map<String, WarehouseSummary> summaryMap = new HashMap<>();
         
-        // Get all orders grouped by warehouse
-        Map<String, List<Order>> ordersByWarehouse = orderService.getAllOrders().stream()
-                .filter(order -> order.getWarehouse() != null && !order.getWarehouse().isEmpty())
-                .collect(Collectors.groupingBy(Order::getWarehouse));
+        List<String> warehousesToProcess = selectedLocation.equals("All") ? 
+            WAREHOUSE_LOCATIONS : Arrays.asList(selectedLocation);
         
-        // Get all devices grouped by warehouse
-        Map<String, List<Device>> devicesByWarehouse = orderService.getAllDevices().stream()
-                .filter(device -> device.getWarehouse() != null && !device.getWarehouse().isEmpty())
-                .collect(Collectors.groupingBy(Device::getWarehouse));
-        
-        // Build summary for each warehouse
-        Set<String> allWarehouses = new HashSet<>();
-        allWarehouses.addAll(ordersByWarehouse.keySet());
-        allWarehouses.addAll(devicesByWarehouse.keySet());
-        
-        for (String warehouse : allWarehouses) {
-            List<Order> orders = ordersByWarehouse.getOrDefault(warehouse, new ArrayList<>());
-            List<Device> devices = devicesByWarehouse.getOrDefault(warehouse, new ArrayList<>());
+        for (String warehouse : warehousesToProcess) {
+            List<Order> orders = getOrdersByWarehouse(warehouse);
+            List<Device> devices = getDevicesByWarehouse(warehouse);
             
             WarehouseSummary summary = new WarehouseSummary();
             summary.setWarehouseName(warehouse);
             summary.setTotalOrders(orders.size());
             summary.setTotalDevices(devices.size());
             summary.setTotalQuantity(orders.stream().mapToInt(Order::getQuantity).sum());
+            
+            // Calculate inward, outward, and available stock
+            Map<String, Integer> inwardStock = calculateInwardStock(orders);
+            Map<String, Integer> outwardStock = calculateOutwardStock(orders);
+            Map<String, Integer> availableStock = calculateAvailableStock(inwardStock, outwardStock);
+            
+            summary.setInwardStock(inwardStock);
+            summary.setOutwardStock(outwardStock);
+            summary.setAvailableStock(availableStock);
             summary.setOrderTypes(getOrderTypesSummary(orders));
             summary.setProductSummary(getProductSummary(orders));
+            summary.setUpdatedAt(LocalDateTime.now());
             
             summaryMap.put(warehouse, summary);
         }
@@ -73,6 +99,43 @@ public class WarehouseService {
         return orderService.getAllDevices().stream()
                 .filter(device -> warehouse.equals(device.getWarehouse()))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Calculate inward stock (orders with type "Inward")
+     */
+    private Map<String, Integer> calculateInwardStock(List<Order> orders) {
+        return orders.stream()
+                .filter(order -> "Inward".equalsIgnoreCase(order.getOrderType()))
+                .collect(Collectors.groupingBy(
+                    Order::getProduct,
+                    Collectors.summingInt(Order::getQuantity)
+                ));
+    }
+
+    /**
+     * Calculate outward stock (orders with type "Outward")
+     */
+    private Map<String, Integer> calculateOutwardStock(List<Order> orders) {
+        return orders.stream()
+                .filter(order -> "Outward".equalsIgnoreCase(order.getOrderType()))
+                .collect(Collectors.groupingBy(
+                    Order::getProduct,
+                    Collectors.summingInt(Order::getQuantity)
+                ));
+    }
+
+    /**
+     * Calculate available stock (inward - outward)
+     */
+    private Map<String, Integer> calculateAvailableStock(Map<String, Integer> inwardStock, 
+                                                       Map<String, Integer> outwardStock) {
+        Map<String, Integer> availableStock = new HashMap<>(inwardStock);
+        
+        outwardStock.forEach((product, quantity) -> 
+            availableStock.merge(product, -quantity, Integer::sum));
+        
+        return availableStock;
     }
 
     /**
@@ -144,6 +207,10 @@ public class WarehouseService {
         private int totalQuantity;
         private Map<String, Integer> orderTypes;
         private Map<String, Integer> productSummary;
+        private Map<String, Integer> inwardStock;
+        private Map<String, Integer> outwardStock;
+        private Map<String, Integer> availableStock;
+        private LocalDateTime updatedAt;
 
         // Getters and Setters
         public String getWarehouseName() { return warehouseName; }
@@ -163,6 +230,18 @@ public class WarehouseService {
 
         public Map<String, Integer> getProductSummary() { return productSummary; }
         public void setProductSummary(Map<String, Integer> productSummary) { this.productSummary = productSummary; }
+
+        public Map<String, Integer> getInwardStock() { return inwardStock; }
+        public void setInwardStock(Map<String, Integer> inwardStock) { this.inwardStock = inwardStock; }
+
+        public Map<String, Integer> getOutwardStock() { return outwardStock; }
+        public void setOutwardStock(Map<String, Integer> outwardStock) { this.outwardStock = outwardStock; }
+
+        public Map<String, Integer> getAvailableStock() { return availableStock; }
+        public void setAvailableStock(Map<String, Integer> availableStock) { this.availableStock = availableStock; }
+
+        public LocalDateTime getUpdatedAt() { return updatedAt; }
+        public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     }
 
     public static class WarehouseStatistics {
