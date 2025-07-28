@@ -7,9 +7,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Package, BarChart3, Archive, RotateCcw, Calendar } from 'lucide-react';
-import { toast } from 'sonner';
+import { Download, Package, BarChart3, Archive, RotateCcw, Plus, Trash2, Search } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+
+interface TabletItem {
+  id: string;
+  nucleusId?: string;
+  schoolName: string;
+  model: string;
+  sdCardSize: string;
+  profileId: string;
+  quantity: number;
+  location: string;
+  serialNumbers?: string[];
+}
+
+interface TVItem {
+  id: string;
+  nucleusId?: string;
+  schoolName: string;
+  model: string;
+  quantity: number;
+  location: string;
+  serialNumbers?: string[];
+}
+
+interface OrderForm {
+  id: number;
+  orderType: string;
+  salesOrder: string;
+  dealId: string;
+  tablets: TabletItem[];
+  tvs: TVItem[];
+  createdAt: Date;
+  updatedAt: Date;
+  status: 'draft' | 'serial-entry' | 'completed';
+}
 
 interface Device {
   id: string;
@@ -43,8 +77,11 @@ interface Order {
 const OrderManagement = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [currentView, setCurrentView] = useState<'create' | 'view' | 'warehouse' | 'devices'>('create');
+  const [localOrders, setLocalOrders] = useState<OrderForm[]>([]);
+  const [currentView, setCurrentView] = useState<'create' | 'view' | 'serial-entry' | 'edit' | 'warehouse' | 'devices'>('create');
   const [loading, setLoading] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<OrderForm | null>(null);
+  const { toast } = useToast();
   
   // Filters
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('All');
@@ -55,17 +92,28 @@ const OrderManagement = () => {
   const [showDeleted, setShowDeleted] = useState<boolean>(false);
   
   // Form states
-  const [orderType, setOrderType] = useState<'Inward' | 'Outward'>('Inward');
-  const [product, setProduct] = useState<'Tablet' | 'TV'>('Tablet');
-  const [model, setModel] = useState<string>('');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [warehouse, setWarehouse] = useState<string>('');
-  const [serialNumbers, setSerialNumbers] = useState<string[]>([]);
+  const [orderType, setOrderType] = useState('');
+  const [salesOrder, setSalesOrder] = useState('');
+  const [dealId, setDealId] = useState('');
+  const [tablets, setTablets] = useState<TabletItem[]>([]);
+  const [tvs, setTVs] = useState<TVItem[]>([]);
+
+  const orderTypes = [
+    'Hardware',
+    'Additional hardware',
+    'Exp Hub',
+    'Stock movement',
+    'Return',
+    'Employee',
+    'Stock',
+    'Other'
+  ];
 
   const tabletModels = ['TB301FU', 'TB301XU', 'TB-8505F', 'TB-7306F', 'TB-7306X', 'TB-7305X'];
   const tvModels = ['Hyundai TV - 39"', 'Hyundai TV - 43"', 'Hyundai TV - 50"', 'Hyundai TV - 55"', 'Hyundai TV - 65"', 'Xentec TV - 39"', 'Xentec TV - 43"'];
-  const warehouses = ['Trichy', 'Bangalore', 'Hyderabad', 'Kolkata', 'Bhiwandi', 'Ghaziabad', 'Zirakpur', 'Indore', 'Jaipur'];
-  const warehouseOptions = ['All', ...warehouses];
+  const sdCardSizes = ['64 GB', '128 GB'];
+  const locations = ['Trichy', 'Bangalore', 'Hyderabad', 'Kolkata', 'Bhiwandi', 'Ghaziabad', 'Zirakpur', 'Indore', 'Jaipur'];
+  const warehouseOptions = ['All', ...locations];
   const productOptions = ['All', 'Tablet', 'TV'];
 
   const getModelsForProduct = (productType: string) => {
@@ -82,12 +130,11 @@ const OrderManagement = () => {
     loadDevices();
   }, []);
 
-  useEffect(() => {
-    // Initialize serial numbers array when quantity changes
-    if (quantity > 0) {
-      setSerialNumbers(Array(quantity).fill(''));
-    }
-  }, [quantity]);
+  const generateId = () => Math.random().toString(36).substr(2, 9);
+  
+  const generateDummyId = (prefix: string) => {
+    return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  };
 
   const loadOrders = async () => {
     try {
@@ -100,7 +147,11 @@ const OrderManagement = () => {
       setOrders((data as Order[]) || []);
     } catch (error) {
       console.error('Error loading orders:', error);
-      toast.error('Failed to load orders');
+      toast({
+        title: "Error",
+        description: "Failed to load orders",
+        variant: "destructive"
+      });
     }
   };
 
@@ -115,71 +166,253 @@ const OrderManagement = () => {
       setDevices((data as Device[]) || []);
     } catch (error) {
       console.error('Error loading devices:', error);
-      toast.error('Failed to load devices');
+      toast({
+        title: "Error",
+        description: "Failed to load devices",
+        variant: "destructive"
+      });
     }
   };
 
-  const createOrder = async () => {
-    if (!orderType || !product || !model || !warehouse || quantity <= 0) {
-      toast.error('Please fill all required fields');
+  const addTablet = () => {
+    const newTablet: TabletItem = {
+      id: generateId(),
+      nucleusId: '',
+      schoolName: '',
+      model: '',
+      sdCardSize: '',
+      profileId: '',
+      quantity: 1,
+      location: ''
+    };
+    setTablets([...tablets, newTablet]);
+  };
+
+  const addTV = () => {
+    const newTV: TVItem = {
+      id: generateId(),
+      nucleusId: '',
+      schoolName: '',
+      model: '',
+      quantity: 1,
+      location: ''
+    };
+    setTVs([...tvs, newTV]);
+  };
+
+  const updateTablet = (id: string, field: keyof TabletItem, value: string | number) => {
+    setTablets(tablets.map(tablet => 
+      tablet.id === id ? { ...tablet, [field]: value } : tablet
+    ));
+  };
+
+  const updateTV = (id: string, field: keyof TVItem, value: string | number) => {
+    setTVs(tvs.map(tv => 
+      tv.id === id ? { ...tv, [field]: value } : tv
+    ));
+  };
+
+  const removeTablet = (id: string) => {
+    setTablets(tablets.filter(tablet => tablet.id !== id));
+  };
+
+  const removeTV = (id: string) => {
+    setTVs(tvs.filter(tv => tv.id !== id));
+  };
+
+  const createOrder = () => {
+    if (!orderType) {
+      toast({
+        title: "Error",
+        description: "Please select an order type",
+        variant: "destructive"
+      });
       return;
     }
 
-    if (serialNumbers.some(sn => !sn.trim())) {
-      toast.error('Please enter all serial numbers');
+    const hasValidTablets = tablets.some(t => t.schoolName.trim());
+    const hasValidTVs = tvs.some(t => t.schoolName.trim());
+
+    if (!hasValidTablets && !hasValidTVs) {
+      toast({
+        title: "Error", 
+        description: "Please add at least one tablet or TV with a school name",
+        variant: "destructive"
+      });
       return;
     }
+
+    const newOrder: OrderForm = {
+      id: localOrders.length + 1,
+      orderType,
+      salesOrder: salesOrder || generateDummyId('SO'),
+      dealId: dealId || '',
+      tablets: tablets.filter(t => t.schoolName.trim()),
+      tvs: tvs.filter(t => t.schoolName.trim()),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      status: 'draft'
+    };
+
+    setLocalOrders([...localOrders, newOrder]);
+    setSelectedOrder(newOrder);
+    setCurrentView('serial-entry');
+    
+    // Reset form
+    setOrderType('');
+    setSalesOrder('');
+    setDealId('');
+    setTablets([]);
+    setTVs([]);
+    
+    toast({
+      title: "Success",
+      description: "Order created! Now enter serial numbers.",
+    });
+  };
+
+  const updateSerialNumber = (itemId: string, index: number, value: string, type: 'tablet' | 'tv') => {
+    if (!selectedOrder) return;
+
+    // Check for duplicate serial number in the same sales order
+    const allSerialNumbers: string[] = [];
+    selectedOrder.tablets.forEach(tablet => {
+      if (tablet.serialNumbers) {
+        allSerialNumbers.push(...tablet.serialNumbers.filter(sn => sn.trim()));
+      }
+    });
+    selectedOrder.tvs.forEach(tv => {
+      if (tv.serialNumbers) {
+        allSerialNumbers.push(...tv.serialNumbers.filter(sn => sn.trim()));
+      }
+    });
+
+    if (value.trim() && allSerialNumbers.includes(value.trim())) {
+      toast({
+        title: "Duplicate Serial Number",
+        description: "This serial number already exists in this order",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const updatedOrder = { ...selectedOrder };
+    
+    if (type === 'tablet') {
+      const item = updatedOrder.tablets.find(t => t.id === itemId);
+      if (item) {
+        if (!item.serialNumbers) item.serialNumbers = [];
+        item.serialNumbers[index] = value;
+      }
+    } else {
+      const item = updatedOrder.tvs.find(t => t.id === itemId);
+      if (item) {
+        if (!item.serialNumbers) item.serialNumbers = [];
+        item.serialNumbers[index] = value;
+      }
+    }
+
+    setSelectedOrder(updatedOrder);
+  };
+
+  const saveSerialNumbers = async () => {
+    if (!selectedOrder) return;
 
     setLoading(true);
     try {
-      // Create order
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          order_type: orderType,
-          product,
-          model,
-          quantity,
-          warehouse,
-          serial_numbers: serialNumbers.filter(sn => sn.trim()),
-          order_date: new Date().toISOString()
-        })
-        .select()
-        .single();
+      // Save tablets to database
+      for (const tablet of selectedOrder.tablets) {
+        if (tablet.serialNumbers && tablet.serialNumbers.length > 0) {
+          const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              order_type: selectedOrder.orderType === 'Stock' || selectedOrder.orderType === 'Return' ? 'Inward' : 'Outward',
+              product: 'Tablet',
+              model: tablet.model,
+              quantity: tablet.quantity,
+              warehouse: tablet.location,
+              serial_numbers: tablet.serialNumbers.filter(sn => sn.trim()),
+              order_date: new Date().toISOString()
+            })
+            .select()
+            .single();
 
-      if (orderError) throw orderError;
+          if (orderError) throw orderError;
 
-      // Create individual device records
-      const devicePromises = serialNumbers
-        .filter(sn => sn.trim())
-        .map(serial_number => 
-          supabase.from('devices').insert({
-            product,
-            model,
-            serial_number: serial_number.trim(),
-            warehouse,
-            status: orderType === 'Inward' ? 'Available' : 'Assigned',
-            order_id: orderData.id
-          })
-        );
+          // Create individual device records
+          for (const serialNumber of tablet.serialNumbers.filter(sn => sn.trim())) {
+            await supabase.from('devices').insert({
+              product: 'Tablet',
+              model: tablet.model,
+              serial_number: serialNumber.trim(),
+              warehouse: tablet.location,
+              status: selectedOrder.orderType === 'Stock' || selectedOrder.orderType === 'Return' ? 'Available' : 'Assigned',
+              order_id: orderData.id
+            });
+          }
+        }
+      }
 
-      await Promise.all(devicePromises);
+      // Save TVs to database
+      for (const tv of selectedOrder.tvs) {
+        if (tv.serialNumbers && tv.serialNumbers.length > 0) {
+          const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              order_type: selectedOrder.orderType === 'Stock' || selectedOrder.orderType === 'Return' ? 'Inward' : 'Outward',
+              product: 'TV',
+              model: tv.model,
+              quantity: tv.quantity,
+              warehouse: tv.location,
+              serial_numbers: tv.serialNumbers.filter(sn => sn.trim()),
+              order_date: new Date().toISOString()
+            })
+            .select()
+            .single();
 
-      // Reset form
-      setOrderType('Inward');
-      setProduct('Tablet');
-      setModel('');
-      setQuantity(1);
-      setWarehouse('');
-      setSerialNumbers([]);
+          if (orderError) throw orderError;
+
+          // Create individual device records
+          for (const serialNumber of tv.serialNumbers.filter(sn => sn.trim())) {
+            await supabase.from('devices').insert({
+              product: 'TV',
+              model: tv.model,
+              serial_number: serialNumber.trim(),
+              warehouse: tv.location,
+              status: selectedOrder.orderType === 'Stock' || selectedOrder.orderType === 'Return' ? 'Available' : 'Assigned',
+              order_id: orderData.id
+            });
+          }
+        }
+      }
+
+      const updatedOrder = {
+        ...selectedOrder,
+        status: 'completed' as const,
+        updatedAt: new Date()
+      };
+
+      setLocalOrders(localOrders.map(order => 
+        order.id === selectedOrder.id ? updatedOrder : order
+      ));
+
+      setSelectedOrder(null);
+      setCurrentView('view');
 
       await loadOrders();
       await loadDevices();
-      
-      toast.success('Order created successfully!');
+
+      toast({
+        title: "Success",
+        description: "Serial numbers saved successfully!",
+      });
     } catch (error) {
-      console.error('Error creating order:', error);
-      toast.error('Failed to create order');
+      console.error('Error saving serial numbers:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save serial numbers",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -205,10 +438,18 @@ const OrderManagement = () => {
 
       await loadOrders();
       await loadDevices();
-      toast.success('Order moved to archive');
+      
+      toast({
+        title: "Success",
+        description: "Order moved to archive",
+      });
     } catch (error) {
       console.error('Error deleting order:', error);
-      toast.error('Failed to delete order');
+      toast({
+        title: "Error",
+        description: "Failed to delete order",
+        variant: "destructive"
+      });
     }
   };
 
@@ -232,10 +473,18 @@ const OrderManagement = () => {
 
       await loadOrders();
       await loadDevices();
-      toast.success('Order restored successfully');
+      
+      toast({
+        title: "Success",
+        description: "Order restored successfully",
+      });
     } catch (error) {
       console.error('Error restoring order:', error);
-      toast.error('Failed to restore order');
+      toast({
+        title: "Error",
+        description: "Failed to restore order",
+        variant: "destructive"
+      });
     }
   };
 
@@ -336,117 +585,335 @@ const OrderManagement = () => {
     a.click();
     window.URL.revokeObjectURL(url);
     
-    toast.success('Summary CSV downloaded successfully!');
-  };
-
-  const updateSerialNumber = (index: number, value: string) => {
-    const newSerialNumbers = [...serialNumbers];
-    newSerialNumbers[index] = value;
-    setSerialNumbers(newSerialNumbers);
+    toast({
+      title: "Success",
+      description: "Summary CSV downloaded successfully!",
+    });
   };
 
   const renderCreateOrderForm = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create New Order</CardTitle>
-        <CardDescription>Enter order details and serial numbers</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="orderType">Order Type</Label>
-            <Select value={orderType} onValueChange={(value: 'Inward' | 'Outward') => setOrderType(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select order type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Inward">Inward</SelectItem>
-                <SelectItem value="Outward">Outward</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="product">Product</Label>
-            <Select value={product} onValueChange={(value: 'Tablet' | 'TV') => {
-              setProduct(value);
-              setModel('');
-            }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select product" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Tablet">Tablet</SelectItem>
-                <SelectItem value="TV">TV</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="model">Model</Label>
-            <Select value={model} onValueChange={setModel}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {getModelsForProduct(product).map(modelOption => (
-                  <SelectItem key={modelOption} value={modelOption}>
-                    {modelOption}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="warehouse">Warehouse</Label>
-            <Select value={warehouse} onValueChange={setWarehouse}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select warehouse" />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.map(location => (
-                  <SelectItem key={location} value={location}>
-                    {location}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="quantity">Quantity</Label>
-            <Input
-              type="number"
-              value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-              min="1"
-            />
-          </div>
-        </div>
-
-        {quantity > 0 && (
-          <div>
-            <Label>Serial Numbers</Label>
-            <div className="space-y-2 mt-2">
-              {Array.from({ length: quantity }, (_, index) => (
-                <Input
-                  key={index}
-                  placeholder={`Serial number ${index + 1}`}
-                  value={serialNumbers[index] || ''}
-                  onChange={(e) => updateSerialNumber(index, e.target.value)}
-                />
-              ))}
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Order Information</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="orderType">Order Type *</Label>
+              <Select value={orderType} onValueChange={setOrderType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select order type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orderTypes.map(type => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="salesOrder">Sales Order</Label>
+              <Input
+                value={salesOrder}
+                onChange={(e) => setSalesOrder(e.target.value)}
+                placeholder="Auto-generated if empty"
+              />
+            </div>
+            <div>
+              <Label htmlFor="dealId">Deal ID</Label>
+              <Input
+                value={dealId}
+                onChange={(e) => setDealId(e.target.value)}
+                placeholder="Optional"
+              />
             </div>
           </div>
-        )}
+        </CardContent>
+      </Card>
 
-        <Button onClick={createOrder} disabled={loading} className="w-full">
-          {loading ? 'Creating...' : 'Create Order'}
-        </Button>
-      </CardContent>
-    </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Tablets</CardTitle>
+          <Button onClick={addTablet} size="sm">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Tablet
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {tablets.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No tablets added</p>
+          ) : (
+            <div className="space-y-4">
+              {tablets.map((tablet) => (
+                <Card key={tablet.id} className="p-4">
+                  <div className="flex justify-between items-start mb-4">
+                    <h4 className="font-medium">Tablet {tablets.indexOf(tablet) + 1}</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeTablet(tablet.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Nucleus ID</Label>
+                      <Input
+                        value={tablet.nucleusId || ''}
+                        onChange={(e) => updateTablet(tablet.id, 'nucleusId', e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <div>
+                      <Label>School Name *</Label>
+                      <Input
+                        value={tablet.schoolName}
+                        onChange={(e) => updateTablet(tablet.id, 'schoolName', e.target.value)}
+                        placeholder="Required"
+                      />
+                    </div>
+                    <div>
+                      <Label>Model *</Label>
+                      <Select
+                        value={tablet.model}
+                        onValueChange={(value) => updateTablet(tablet.id, 'model', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tabletModels.map(model => (
+                            <SelectItem key={model} value={model}>{model}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>SD Card Size</Label>
+                      <Select
+                        value={tablet.sdCardSize}
+                        onValueChange={(value) => updateTablet(tablet.id, 'sdCardSize', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sdCardSizes.map(size => (
+                            <SelectItem key={size} value={size}>{size}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Profile ID</Label>
+                      <Input
+                        value={tablet.profileId}
+                        onChange={(e) => updateTablet(tablet.id, 'profileId', e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <div>
+                      <Label>Quantity *</Label>
+                      <Input
+                        type="number"
+                        value={tablet.quantity}
+                        onChange={(e) => updateTablet(tablet.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                        min="1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Location *</Label>
+                      <Select
+                        value={tablet.location}
+                        onValueChange={(value) => updateTablet(tablet.id, 'location', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {locations.map(location => (
+                            <SelectItem key={location} value={location}>{location}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>TVs</CardTitle>
+          <Button onClick={addTV} size="sm">
+            <Plus className="w-4 h-4 mr-2" />
+            Add TV
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {tvs.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No TVs added</p>
+          ) : (
+            <div className="space-y-4">
+              {tvs.map((tv) => (
+                <Card key={tv.id} className="p-4">
+                  <div className="flex justify-between items-start mb-4">
+                    <h4 className="font-medium">TV {tvs.indexOf(tv) + 1}</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeTV(tv.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Nucleus ID</Label>
+                      <Input
+                        value={tv.nucleusId || ''}
+                        onChange={(e) => updateTV(tv.id, 'nucleusId', e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <div>
+                      <Label>School Name *</Label>
+                      <Input
+                        value={tv.schoolName}
+                        onChange={(e) => updateTV(tv.id, 'schoolName', e.target.value)}
+                        placeholder="Required"
+                      />
+                    </div>
+                    <div>
+                      <Label>Model *</Label>
+                      <Select
+                        value={tv.model}
+                        onValueChange={(value) => updateTV(tv.id, 'model', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tvModels.map(model => (
+                            <SelectItem key={model} value={model}>{model}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Quantity *</Label>
+                      <Input
+                        type="number"
+                        value={tv.quantity}
+                        onChange={(e) => updateTV(tv.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                        min="1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Location *</Label>
+                      <Select
+                        value={tv.location}
+                        onValueChange={(value) => updateTV(tv.id, 'location', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {locations.map(location => (
+                            <SelectItem key={location} value={location}>{location}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Button onClick={createOrder} className="w-full" size="lg">
+        Create Order
+      </Button>
+    </div>
   );
+
+  const renderSerialEntryForm = () => {
+    if (!selectedOrder) return null;
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Enter Serial Numbers</CardTitle>
+          <CardDescription>
+            Order Type: {selectedOrder.orderType} | Sales Order: {selectedOrder.salesOrder}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {selectedOrder.tablets.map((tablet) => (
+            <Card key={tablet.id} className="p-4">
+              <h4 className="font-medium mb-4">
+                Tablet - {tablet.model} at {tablet.location} (Quantity: {tablet.quantity})
+              </h4>
+              <p className="text-sm text-muted-foreground mb-4">School: {tablet.schoolName}</p>
+              <div className="space-y-2">
+                {Array.from({ length: tablet.quantity }, (_, index) => (
+                  <Input
+                    key={index}
+                    placeholder={`Serial number ${index + 1}`}
+                    value={tablet.serialNumbers?.[index] || ''}
+                    onChange={(e) => updateSerialNumber(tablet.id, index, e.target.value, 'tablet')}
+                  />
+                ))}
+              </div>
+            </Card>
+          ))}
+
+          {selectedOrder.tvs.map((tv) => (
+            <Card key={tv.id} className="p-4">
+              <h4 className="font-medium mb-4">
+                TV - {tv.model} at {tv.location} (Quantity: {tv.quantity})
+              </h4>
+              <p className="text-sm text-muted-foreground mb-4">School: {tv.schoolName}</p>
+              <div className="space-y-2">
+                {Array.from({ length: tv.quantity }, (_, index) => (
+                  <Input
+                    key={index}
+                    placeholder={`Serial number ${index + 1}`}
+                    value={tv.serialNumbers?.[index] || ''}
+                    onChange={(e) => updateSerialNumber(tv.id, index, e.target.value, 'tv')}
+                  />
+                ))}
+              </div>
+            </Card>
+          ))}
+
+          <div className="flex gap-4">
+            <Button
+              variant="outline"
+              onClick={() => setCurrentView('create')}
+              className="flex-1"
+            >
+              Back to Create
+            </Button>
+            <Button
+              onClick={saveSerialNumbers}
+              disabled={loading}
+              className="flex-1"
+            >
+              {loading ? 'Saving...' : 'Save Serial Numbers'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   const renderFilters = () => (
     <Card className="mb-6">
@@ -809,6 +1276,10 @@ const OrderManagement = () => {
 
         <TabsContent value="create" className="mt-6">
           {renderCreateOrderForm()}
+        </TabsContent>
+
+        <TabsContent value="serial-entry" className="mt-6">
+          {renderSerialEntryForm()}
         </TabsContent>
 
         <TabsContent value="view" className="mt-6">
