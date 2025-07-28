@@ -14,7 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      devices: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          id: string
+          is_deleted: boolean
+          model: string
+          order_id: string | null
+          product: string
+          serial_number: string
+          status: string
+          updated_at: string
+          warehouse: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_deleted?: boolean
+          model: string
+          order_id?: string | null
+          product: string
+          serial_number: string
+          status: string
+          updated_at?: string
+          warehouse: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_deleted?: boolean
+          model?: string
+          order_id?: string | null
+          product?: string
+          serial_number?: string
+          status?: string
+          updated_at?: string
+          warehouse?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "devices_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          id: string
+          is_deleted: boolean
+          model: string
+          order_date: string
+          order_type: string
+          product: string
+          quantity: number
+          serial_numbers: string[]
+          updated_at: string
+          warehouse: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_deleted?: boolean
+          model: string
+          order_date?: string
+          order_type: string
+          product: string
+          quantity: number
+          serial_numbers: string[]
+          updated_at?: string
+          warehouse: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_deleted?: boolean
+          model?: string
+          order_date?: string
+          order_type?: string
+          product?: string
+          quantity?: number
+          serial_numbers?: string[]
+          updated_at?: string
+          warehouse?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
