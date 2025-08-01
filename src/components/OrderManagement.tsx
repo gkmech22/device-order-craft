@@ -7,9 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Package, BarChart3, Archive, RotateCcw, Plus, Trash2, Search } from 'lucide-react';
+import { Download, Package, BarChart3, Archive, RotateCcw, Plus, Trash2, Search, Camera, Edit, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import BarcodeScanner from './BarcodeScanner';
 
 interface TabletItem {
   id: string;
@@ -53,10 +54,17 @@ interface Device {
   warehouse: string;
   status: 'Available' | 'Assigned' | 'Maintenance';
   order_id?: string;
+  sales_order?: string;
+  deal_id?: string;
+  school_name?: string;
+  nucleus_id?: string;
   created_at: string;
   updated_at: string;
   deleted_at?: string;
   is_deleted: boolean;
+  created_by?: string;
+  updated_by?: string;
+  deleted_by?: string;
 }
 
 interface Order {
@@ -67,11 +75,18 @@ interface Order {
   quantity: number;
   warehouse: string;
   serial_numbers: string[];
+  sales_order?: string;
+  deal_id?: string;
+  school_name?: string;
+  nucleus_id?: string;
   order_date: string;
   created_at: string;
   updated_at: string;
   deleted_at?: string;
   is_deleted: boolean;
+  created_by?: string;
+  updated_by?: string;
+  deleted_by?: string;
 }
 
 const OrderManagement = () => {
@@ -90,6 +105,11 @@ const OrderManagement = () => {
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [showDeleted, setShowDeleted] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Scanner states
+  const [showScanner, setShowScanner] = useState<boolean>(false);
+  const [currentSerialIndex, setCurrentSerialIndex] = useState<{ itemId: string; index: number; type: 'tablet' | 'tv' } | null>(null);
   
   // Form states
   const [orderType, setOrderType] = useState('');
@@ -220,7 +240,7 @@ const OrderManagement = () => {
     setTVs(tvs.filter(tv => tv.id !== id));
   };
 
-  const createOrder = () => {
+  const createOrder = async (): Promise<void> => {
     if (!orderType) {
       toast({
         title: "Error",
@@ -229,6 +249,8 @@ const OrderManagement = () => {
       });
       return;
     }
+
+      // TODO: Add duplicate sales order check
 
     const hasValidTablets = tablets.some(t => t.schoolName.trim());
     const hasValidTVs = tvs.some(t => t.schoolName.trim());
@@ -331,6 +353,10 @@ const OrderManagement = () => {
               model: tablet.model,
               quantity: tablet.quantity,
               warehouse: tablet.location,
+              sales_order: selectedOrder.salesOrder,
+              deal_id: selectedOrder.dealId,
+              school_name: tablet.schoolName,
+              nucleus_id: tablet.nucleusId,
               serial_numbers: tablet.serialNumbers.filter(sn => sn.trim()),
               order_date: new Date().toISOString()
             })
@@ -346,6 +372,10 @@ const OrderManagement = () => {
               model: tablet.model,
               serial_number: serialNumber.trim(),
               warehouse: tablet.location,
+              sales_order: selectedOrder.salesOrder,
+              deal_id: selectedOrder.dealId,
+              school_name: tablet.schoolName,
+              nucleus_id: tablet.nucleusId,
               status: selectedOrder.orderType === 'Stock' || selectedOrder.orderType === 'Return' ? 'Available' : 'Assigned',
               order_id: orderData.id
             });
@@ -364,6 +394,10 @@ const OrderManagement = () => {
               model: tv.model,
               quantity: tv.quantity,
               warehouse: tv.location,
+              sales_order: selectedOrder.salesOrder,
+              deal_id: selectedOrder.dealId,
+              school_name: tv.schoolName,
+              nucleus_id: tv.nucleusId,
               serial_numbers: tv.serialNumbers.filter(sn => sn.trim()),
               order_date: new Date().toISOString()
             })
@@ -379,6 +413,10 @@ const OrderManagement = () => {
               model: tv.model,
               serial_number: serialNumber.trim(),
               warehouse: tv.location,
+              sales_order: selectedOrder.salesOrder,
+              deal_id: selectedOrder.dealId,
+              school_name: tv.schoolName,
+              nucleus_id: tv.nucleusId,
               status: selectedOrder.orderType === 'Stock' || selectedOrder.orderType === 'Return' ? 'Available' : 'Assigned',
               order_id: orderData.id
             });
@@ -497,8 +535,22 @@ const OrderManagement = () => {
       if (selectedProduct !== 'All' && order.product !== selectedProduct) return false;
       if (selectedModel !== 'All' && order.model !== selectedModel) return false;
       
+      // Date validation: From date >= selected date, To date <= selected date
       if (fromDate && new Date(order.order_date) < new Date(fromDate)) return false;
       if (toDate && new Date(order.order_date) > new Date(toDate)) return false;
+      
+      // Search functionality
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = 
+          order.sales_order?.toLowerCase().includes(query) ||
+          order.deal_id?.toLowerCase().includes(query) ||
+          order.school_name?.toLowerCase().includes(query) ||
+          order.nucleus_id?.toLowerCase().includes(query) ||
+          order.serial_numbers.some(sn => sn.toLowerCase().includes(query));
+        
+        if (!matchesSearch) return false;
+      }
       
       return true;
     });
@@ -513,8 +565,22 @@ const OrderManagement = () => {
       if (selectedProduct !== 'All' && device.product !== selectedProduct) return false;
       if (selectedModel !== 'All' && device.model !== selectedModel) return false;
       
+      // Date validation: From date >= selected date, To date <= selected date
       if (fromDate && new Date(device.created_at) < new Date(fromDate)) return false;
       if (toDate && new Date(device.created_at) > new Date(toDate)) return false;
+      
+      // Search functionality
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = 
+          device.sales_order?.toLowerCase().includes(query) ||
+          device.deal_id?.toLowerCase().includes(query) ||
+          device.school_name?.toLowerCase().includes(query) ||
+          device.nucleus_id?.toLowerCase().includes(query) ||
+          device.serial_number.toLowerCase().includes(query);
+        
+        if (!matchesSearch) return false;
+      }
       
       return true;
     });
@@ -588,6 +654,39 @@ const OrderManagement = () => {
     toast({
       title: "Success",
       description: "Summary CSV downloaded successfully!",
+    });
+  };
+
+  const downloadDevicesCSV = () => {
+    const filteredDevices = getFilteredDevices();
+    const csvContent = [
+      ['Product', 'Model', 'Serial Number', 'Warehouse', 'Status', 'Sales Order', 'Deal ID', 'School Name', 'Nucleus ID', 'Created Date', 'Order Status'],
+      ...filteredDevices.map(device => [
+        device.product,
+        device.model,
+        device.serial_number,
+        device.warehouse,
+        device.status,
+        device.sales_order || '',
+        device.deal_id || '',
+        device.school_name || '',
+        device.nucleus_id || '',
+        new Date(device.created_at).toLocaleDateString(),
+        device.is_deleted ? 'Deleted' : 'Active'
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `devices-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Success",
+      description: "Devices CSV downloaded successfully!",
     });
   };
 
@@ -844,6 +943,24 @@ const OrderManagement = () => {
     </div>
   );
 
+  const openScanner = (itemId: string, index: number, type: 'tablet' | 'tv') => {
+    setCurrentSerialIndex({ itemId, index, type });
+    setShowScanner(true);
+  };
+
+  const handleScanResult = (scannedValue: string) => {
+    if (currentSerialIndex) {
+      updateSerialNumber(
+        currentSerialIndex.itemId,
+        currentSerialIndex.index,
+        scannedValue,
+        currentSerialIndex.type
+      );
+      setCurrentSerialIndex(null);
+    }
+    setShowScanner(false);
+  };
+
   const renderSerialEntryForm = () => {
     if (!selectedOrder) return null;
 
@@ -864,12 +981,21 @@ const OrderManagement = () => {
               <p className="text-sm text-muted-foreground mb-4">School: {tablet.schoolName}</p>
               <div className="space-y-2">
                 {Array.from({ length: tablet.quantity }, (_, index) => (
-                  <Input
-                    key={index}
-                    placeholder={`Serial number ${index + 1}`}
-                    value={tablet.serialNumbers?.[index] || ''}
-                    onChange={(e) => updateSerialNumber(tablet.id, index, e.target.value, 'tablet')}
-                  />
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder={`Serial number ${index + 1}`}
+                      value={tablet.serialNumbers?.[index] || ''}
+                      onChange={(e) => updateSerialNumber(tablet.id, index, e.target.value, 'tablet')}
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openScanner(tablet.id, index, 'tablet')}
+                    >
+                      <Camera className="w-4 h-4" />
+                    </Button>
+                  </div>
                 ))}
               </div>
             </Card>
@@ -883,12 +1009,21 @@ const OrderManagement = () => {
               <p className="text-sm text-muted-foreground mb-4">School: {tv.schoolName}</p>
               <div className="space-y-2">
                 {Array.from({ length: tv.quantity }, (_, index) => (
-                  <Input
-                    key={index}
-                    placeholder={`Serial number ${index + 1}`}
-                    value={tv.serialNumbers?.[index] || ''}
-                    onChange={(e) => updateSerialNumber(tv.id, index, e.target.value, 'tv')}
-                  />
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder={`Serial number ${index + 1}`}
+                      value={tv.serialNumbers?.[index] || ''}
+                      onChange={(e) => updateSerialNumber(tv.id, index, e.target.value, 'tv')}
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openScanner(tv.id, index, 'tv')}
+                    >
+                      <Camera className="w-4 h-4" />
+                    </Button>
+                  </div>
                 ))}
               </div>
             </Card>
@@ -916,89 +1051,110 @@ const OrderManagement = () => {
   };
 
   const renderFilters = () => (
-    <Card className="mb-6">
-      <CardHeader>
-        <CardTitle>Filters</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div>
-            <Label>Warehouse</Label>
-            <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouseOptions.map(option => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+    <div className="space-y-4">
+      {/* Search Box */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="w-5 h-5" />
+            Search
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Input
+            placeholder="Search by Sales Order, Deal ID, School Name, Nucleus ID, or Serial Number"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full"
+          />
+        </CardContent>
+      </Card>
 
-          <div>
-            <Label>Product</Label>
-            <Select value={selectedProduct} onValueChange={(value) => {
-              setSelectedProduct(value);
-              setSelectedModel('All');
-            }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {productOptions.map(option => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div>
+              <Label>Warehouse</Label>
+              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouseOptions.map(option => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div>
-            <Label>Model</Label>
-            <Select value={selectedModel} onValueChange={setSelectedModel}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(selectedProduct === 'All' ? modelOptions : 
-                  ['All', ...getModelsForProduct(selectedProduct)]
-                ).map(option => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div>
+              <Label>Product</Label>
+              <Select value={selectedProduct} onValueChange={(value) => {
+                setSelectedProduct(value);
+                setSelectedModel('All');
+              }}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {productOptions.map(option => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div>
-            <Label>From Date</Label>
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
-          </div>
+            <div>
+              <Label>Model</Label>
+              <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(selectedProduct === 'All' ? modelOptions : 
+                    ['All', ...getModelsForProduct(selectedProduct)]
+                  ).map(option => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div>
-            <Label>To Date</Label>
-            <Input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-            />
-          </div>
+            <div>
+              <Label>From Date</Label>
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
 
-          <div className="flex items-end">
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleted(!showDeleted)}
-              className="w-full"
-            >
-              {showDeleted ? 'Show Active' : 'Show Deleted'}
-            </Button>
+            <div>
+              <Label>To Date</Label>
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleted(!showDeleted)}
+                className="w-full"
+              >
+                {showDeleted ? 'Show Active' : 'Show Deleted'}
+              </Button>
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 
   const renderWarehouseSummary = () => {
@@ -1116,6 +1272,8 @@ const OrderManagement = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Sales Order</TableHead>
+                  <TableHead>School Name</TableHead>
                   <TableHead>Order Type</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead>Model</TableHead>
@@ -1129,6 +1287,8 @@ const OrderManagement = () => {
               <TableBody>
                 {filteredOrders.map(order => (
                   <TableRow key={order.id}>
+                    <TableCell className="font-mono">{order.sales_order || 'N/A'}</TableCell>
+                    <TableCell>{order.school_name || 'N/A'}</TableCell>
                     <TableCell>
                       <Badge variant={order.order_type === 'Inward' ? 'default' : 'secondary'}>
                         {order.order_type}
@@ -1145,29 +1305,37 @@ const OrderManagement = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {order.is_deleted ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => restoreOrder(order.id)}
-                        >
-                          <RotateCcw className="w-4 h-4" />
+                      <div className="flex gap-1">
+                        <Button variant="outline" size="sm">
+                          <Eye className="w-4 h-4" />
                         </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => softDeleteOrder(order.id)}
-                        >
-                          <Archive className="w-4 h-4" />
+                        <Button variant="outline" size="sm">
+                          <Edit className="w-4 h-4" />
                         </Button>
-                      )}
+                        {order.is_deleted ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => restoreOrder(order.id)}
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => softDeleteOrder(order.id)}
+                          >
+                            <Archive className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
                 {filteredOrders.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground">
                       No orders found
                     </TableCell>
                   </TableRow>
@@ -1188,11 +1356,17 @@ const OrderManagement = () => {
         {renderFilters()}
         
         <Card>
-          <CardHeader>
-            <CardTitle>Devices</CardTitle>
-            <CardDescription>
-              {filteredDevices.length} devices found
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Devices</CardTitle>
+              <CardDescription>
+                {filteredDevices.length} devices found
+              </CardDescription>
+            </div>
+            <Button onClick={downloadDevicesCSV} variant="outline" size="sm">
+              <Download className="w-4 h-4 mr-2" />
+              Download CSV
+            </Button>
           </CardHeader>
           <CardContent>
             <Table>
@@ -1203,6 +1377,10 @@ const OrderManagement = () => {
                   <TableHead>Serial Number</TableHead>
                   <TableHead>Warehouse</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Sales Order</TableHead>
+                  <TableHead>Deal ID</TableHead>
+                  <TableHead>School Name</TableHead>
+                  <TableHead>Nucleus ID</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Order Status</TableHead>
                 </TableRow>
@@ -1224,6 +1402,10 @@ const OrderManagement = () => {
                         {device.status}
                       </Badge>
                     </TableCell>
+                    <TableCell className="font-mono">{device.sales_order || 'N/A'}</TableCell>
+                    <TableCell>{device.deal_id || 'N/A'}</TableCell>
+                    <TableCell>{device.school_name || 'N/A'}</TableCell>
+                    <TableCell>{device.nucleus_id || 'N/A'}</TableCell>
                     <TableCell>{new Date(device.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <Badge variant={device.is_deleted ? 'destructive' : 'default'}>
@@ -1234,7 +1416,7 @@ const OrderManagement = () => {
                 ))}
                 {filteredDevices.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center text-muted-foreground">
                       No devices found
                     </TableCell>
                   </TableRow>
@@ -1294,6 +1476,15 @@ const OrderManagement = () => {
           {renderDevicesView()}
         </TabsContent>
       </Tabs>
+
+      <BarcodeScanner
+        isOpen={showScanner}
+        onClose={() => {
+          setShowScanner(false);
+          setCurrentSerialIndex(null);
+        }}
+        onScan={handleScanResult}
+      />
     </div>
   );
 };
