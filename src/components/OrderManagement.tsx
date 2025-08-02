@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Package, BarChart3, Archive, RotateCcw, Plus, Trash2, Search, Camera, Edit, Eye } from 'lucide-react';
+import { Download, Package, BarChart3, Archive, RotateCcw, Plus, Trash2, Search, Camera, Edit, Eye, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import BarcodeScanner from './BarcodeScanner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface TabletItem {
   id: string;
@@ -89,6 +90,143 @@ interface Order {
   deleted_by?: string;
 }
 
+// EditOrderForm component definition
+const EditOrderForm = ({ order, onSave, onCancel }: {
+  order: Order;
+  onSave: (order: Order) => void;
+  onCancel: () => void;
+}) => {
+  const [formData, setFormData] = useState<Order>({ ...order });
+  const [newSerialNumber, setNewSerialNumber] = useState('');
+  const { toast } = useToast();
+
+  const addSerialNumber = (serial: string) => {
+    if (serial && !formData.serial_numbers.includes(serial)) {
+      setFormData(prev => ({
+        ...prev,
+        serial_numbers: [...prev.serial_numbers, serial]
+      }));
+      setNewSerialNumber('');
+    }
+  };
+
+  const removeSerialNumber = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      serial_numbers: prev.serial_numbers.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleScanSuccess = (result: string) => {
+    addSerialNumber(result);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>Sales Order</Label>
+          <Input
+            value={formData.sales_order || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, sales_order: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label>Deal ID</Label>
+          <Input
+            value={formData.deal_id || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, deal_id: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label>School Name</Label>
+          <Input
+            value={formData.school_name || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, school_name: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label>Nucleus ID</Label>
+          <Input
+            value={formData.nucleus_id || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, nucleus_id: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label>Quantity</Label>
+          <Input
+            type="number"
+            value={formData.quantity}
+            onChange={(e) => setFormData(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+            min="1"
+          />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Serial Numbers</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Enter serial number"
+              value={newSerialNumber}
+              onChange={(e) => setNewSerialNumber(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addSerialNumber(newSerialNumber);
+                }
+              }}
+            />
+            <Button 
+              onClick={() => addSerialNumber(newSerialNumber)}
+              variant="outline"
+            >
+              Add
+            </Button>
+            <BarcodeScanner 
+              isOpen={false}
+              onClose={() => {}}
+              onScan={handleScanSuccess}
+            />
+          </div>
+          
+          {formData.serial_numbers.length > 0 && (
+            <div className="space-y-2">
+              <Label>Added Serial Numbers ({formData.serial_numbers.length})</Label>
+              <div className="flex flex-wrap gap-2">
+                {formData.serial_numbers.map((serial, index) => (
+                  <div key={index} className="flex items-center gap-1 bg-muted p-2 rounded">
+                    <span className="font-mono text-sm">{serial}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeSerialNumber(index)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={() => onSave(formData)}>
+          Save Changes
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const OrderManagement = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -110,6 +248,12 @@ const OrderManagement = () => {
   // Scanner states
   const [showScanner, setShowScanner] = useState<boolean>(false);
   const [currentSerialIndex, setCurrentSerialIndex] = useState<{ itemId: string; index: number; type: 'tablet' | 'tv' } | null>(null);
+  
+  // Edit/View dialog states
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const [showViewDialog, setShowViewDialog] = useState(false);
   
   // Form states
   const [orderType, setOrderType] = useState('');
@@ -1364,30 +1508,26 @@ const OrderManagement = () => {
                     </TableCell>
                      <TableCell>
                        <div className="flex gap-1">
-                         <Button 
-                           variant="outline" 
-                           size="sm"
-                           onClick={() => {
-                             toast({
-                               title: "Order Details",
-                               description: `Sales Order: ${order.sales_order || 'N/A'}\nSerial Numbers: ${order.serial_numbers.join(', ') || 'None entered'}`,
-                             });
-                           }}
-                         >
-                           <Eye className="w-4 h-4" />
-                         </Button>
-                         <Button 
-                           variant="outline" 
-                           size="sm"
-                           onClick={() => {
-                             toast({
-                               title: "Edit Order",
-                               description: "Edit functionality coming soon",
-                             });
-                           }}
-                         >
-                           <Edit className="w-4 h-4" />
-                         </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              setViewingOrder(order);
+                              setShowViewDialog(true);
+                            }}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              setEditingOrder(order);
+                              setShowEditDialog(true);
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
                          {order.is_deleted ? (
                            <Button
                              variant="outline"
@@ -1576,8 +1716,158 @@ const OrderManagement = () => {
         }}
         onScan={handleScanResult}
       />
+
+      {/* View Order Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Order Summary</DialogTitle>
+          </DialogHeader>
+          {viewingOrder && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Order Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Sales Order</Label>
+                      <p className="font-mono">{viewingOrder.sales_order || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Deal ID</Label>
+                      <p>{viewingOrder.deal_id || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">School Name</Label>
+                      <p>{viewingOrder.school_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Nucleus ID</Label>
+                      <p>{viewingOrder.nucleus_id || 'N/A'}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Product Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Order Type</Label>
+                      <Badge variant={viewingOrder.order_type === 'Inward' ? 'default' : 'secondary'}>
+                        {viewingOrder.order_type}
+                      </Badge>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Product</Label>
+                      <p>{viewingOrder.product}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Model</Label>
+                      <p>{viewingOrder.model}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Warehouse</Label>
+                      <p>{viewingOrder.warehouse}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Quantity</Label>
+                      <p>{viewingOrder.quantity}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Order Date</Label>
+                      <p>{new Date(viewingOrder.order_date).toLocaleDateString()}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Serial Numbers ({viewingOrder.serial_numbers.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {viewingOrder.serial_numbers.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {viewingOrder.serial_numbers.map((serial, index) => (
+                        <Badge key={index} variant="outline" className="font-mono">
+                          {serial}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No serial numbers entered</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Order Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Order</DialogTitle>
+          </DialogHeader>
+          {editingOrder && (
+            <EditOrderForm 
+              order={editingOrder} 
+              onSave={(updatedOrder) => {
+                updateOrder(updatedOrder);
+                setShowEditDialog(false);
+                setEditingOrder(null);
+              }}
+              onCancel={() => {
+                setShowEditDialog(false);
+                setEditingOrder(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
+
+  const updateOrder = async (updatedOrder: Order) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          sales_order: updatedOrder.sales_order,
+          deal_id: updatedOrder.deal_id,
+          school_name: updatedOrder.school_name,
+          nucleus_id: updatedOrder.nucleus_id,
+          quantity: updatedOrder.quantity,
+          serial_numbers: updatedOrder.serial_numbers,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', updatedOrder.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setOrders(prev => prev.map(order => 
+        order.id === updatedOrder.id ? updatedOrder : order
+      ));
+
+      toast({
+        title: "Success",
+        description: "Order updated successfully",
+      });
+    } catch (error) {
+      console.error('Error updating order:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update order",
+        variant: "destructive",
+      });
+    }
+  };
 };
 
 export default OrderManagement;
