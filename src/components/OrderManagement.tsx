@@ -250,7 +250,7 @@ const OrderManagement = () => {
       return;
     }
 
-      // TODO: Add duplicate sales order check
+    // TODO: Add duplicate sales order check
 
     const hasValidTablets = tablets.some(t => t.schoolName.trim());
     const hasValidTVs = tvs.some(t => t.schoolName.trim());
@@ -264,33 +264,89 @@ const OrderManagement = () => {
       return;
     }
 
-    const newOrder: OrderForm = {
-      id: localOrders.length + 1,
-      orderType,
-      salesOrder: salesOrder || generateDummyId('SO'),
-      dealId: dealId || '',
-      tablets: tablets.filter(t => t.schoolName.trim()),
-      tvs: tvs.filter(t => t.schoolName.trim()),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      status: 'draft'
-    };
+    setLoading(true);
+    try {
+      // Create orders in database immediately, even without serial numbers
+      const validTablets = tablets.filter(t => t.schoolName.trim());
+      const validTVs = tvs.filter(t => t.schoolName.trim());
 
-    setLocalOrders([...localOrders, newOrder]);
-    setSelectedOrder(newOrder);
-    setCurrentView('serial-entry');
-    
-    // Reset form
-    setOrderType('');
-    setSalesOrder('');
-    setDealId('');
-    setTablets([]);
-    setTVs([]);
-    
-    toast({
-      title: "Success",
-      description: "Order created! Now enter serial numbers.",
-    });
+      // Save tablets to database
+      for (const tablet of validTablets) {
+        await supabase
+          .from('orders')
+          .insert({
+            order_type: orderType === 'Stock' || orderType === 'Return' ? 'Inward' : 'Outward',
+            product: 'Tablet',
+            model: tablet.model,
+            quantity: tablet.quantity,
+            warehouse: tablet.location,
+            sales_order: salesOrder || generateDummyId('SO'),
+            deal_id: dealId || '',
+            school_name: tablet.schoolName,
+            nucleus_id: tablet.nucleusId,
+            serial_numbers: [],
+            order_date: new Date().toISOString()
+          });
+      }
+
+      // Save TVs to database
+      for (const tv of validTVs) {
+        await supabase
+          .from('orders')
+          .insert({
+            order_type: orderType === 'Stock' || orderType === 'Return' ? 'Inward' : 'Outward',
+            product: 'TV',
+            model: tv.model,
+            quantity: tv.quantity,
+            warehouse: tv.location,
+            sales_order: salesOrder || generateDummyId('SO'),
+            deal_id: dealId || '',
+            school_name: tv.schoolName,
+            nucleus_id: tv.nucleusId,
+            serial_numbers: [],
+            order_date: new Date().toISOString()
+          });
+      }
+
+      await loadOrders();
+
+      const newOrder: OrderForm = {
+        id: localOrders.length + 1,
+        orderType,
+        salesOrder: salesOrder || generateDummyId('SO'),
+        dealId: dealId || '',
+        tablets: validTablets,
+        tvs: validTVs,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        status: 'draft'
+      };
+
+      setLocalOrders([...localOrders, newOrder]);
+      setSelectedOrder(newOrder);
+      setCurrentView('serial-entry');
+      
+      // Reset form
+      setOrderType('');
+      setSalesOrder('');
+      setDealId('');
+      setTablets([]);
+      setTVs([]);
+      
+      toast({
+        title: "Success",
+        description: "Order created! You can add serial numbers now or later.",
+      });
+    } catch (error) {
+      console.error('Error creating order:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create order",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateSerialNumber = (itemId: string, index: number, value: string, type: 'tablet' | 'tv') => {
@@ -981,21 +1037,22 @@ const OrderManagement = () => {
               <p className="text-sm text-muted-foreground mb-4">School: {tablet.schoolName}</p>
               <div className="space-y-2">
                 {Array.from({ length: tablet.quantity }, (_, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      placeholder={`Serial number ${index + 1}`}
-                      value={tablet.serialNumbers?.[index] || ''}
-                      onChange={(e) => updateSerialNumber(tablet.id, index, e.target.value, 'tablet')}
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openScanner(tablet.id, index, 'tablet')}
-                    >
-                      <Camera className="w-4 h-4" />
-                    </Button>
-                  </div>
+                   <div key={index} className="flex gap-2 items-center">
+                     <Input
+                       placeholder={`Serial number ${index + 1}`}
+                       value={tablet.serialNumbers?.[index] || ''}
+                       onChange={(e) => updateSerialNumber(tablet.id, index, e.target.value, 'tablet')}
+                       className="flex-1"
+                     />
+                     <Button
+                       variant="outline"
+                       size="sm"
+                       onClick={() => openScanner(tablet.id, index, 'tablet')}
+                       title="Scan Barcode/QR Code"
+                     >
+                       <Camera className="w-4 h-4" />
+                     </Button>
+                   </div>
                 ))}
               </div>
             </Card>
@@ -1009,21 +1066,22 @@ const OrderManagement = () => {
               <p className="text-sm text-muted-foreground mb-4">School: {tv.schoolName}</p>
               <div className="space-y-2">
                 {Array.from({ length: tv.quantity }, (_, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      placeholder={`Serial number ${index + 1}`}
-                      value={tv.serialNumbers?.[index] || ''}
-                      onChange={(e) => updateSerialNumber(tv.id, index, e.target.value, 'tv')}
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openScanner(tv.id, index, 'tv')}
-                    >
-                      <Camera className="w-4 h-4" />
-                    </Button>
-                  </div>
+                   <div key={index} className="flex gap-2 items-center">
+                     <Input
+                       placeholder={`Serial number ${index + 1}`}
+                       value={tv.serialNumbers?.[index] || ''}
+                       onChange={(e) => updateSerialNumber(tv.id, index, e.target.value, 'tv')}
+                       className="flex-1"
+                     />
+                     <Button
+                       variant="outline"
+                       size="sm"
+                       onClick={() => openScanner(tv.id, index, 'tv')}
+                       title="Scan Barcode/QR Code"
+                     >
+                       <Camera className="w-4 h-4" />
+                     </Button>
+                   </div>
                 ))}
               </div>
             </Card>
@@ -1287,8 +1345,8 @@ const OrderManagement = () => {
               <TableBody>
                 {filteredOrders.map(order => (
                   <TableRow key={order.id}>
-                    <TableCell className="font-mono">{order.sales_order || 'N/A'}</TableCell>
-                    <TableCell>{order.school_name || 'N/A'}</TableCell>
+                     <TableCell className="font-mono">{order.sales_order || ''}</TableCell>
+                     <TableCell>{order.school_name || ''}</TableCell>
                     <TableCell>
                       <Badge variant={order.order_type === 'Inward' ? 'default' : 'secondary'}>
                         {order.order_type}
@@ -1304,33 +1362,51 @@ const OrderManagement = () => {
                         {order.is_deleted ? 'Deleted' : 'Active'}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="outline" size="sm">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        {order.is_deleted ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => restoreOrder(order.id)}
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => softDeleteOrder(order.id)}
-                          >
-                            <Archive className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
+                     <TableCell>
+                       <div className="flex gap-1">
+                         <Button 
+                           variant="outline" 
+                           size="sm"
+                           onClick={() => {
+                             toast({
+                               title: "Order Details",
+                               description: `Sales Order: ${order.sales_order || 'N/A'}\nSerial Numbers: ${order.serial_numbers.join(', ') || 'None entered'}`,
+                             });
+                           }}
+                         >
+                           <Eye className="w-4 h-4" />
+                         </Button>
+                         <Button 
+                           variant="outline" 
+                           size="sm"
+                           onClick={() => {
+                             toast({
+                               title: "Edit Order",
+                               description: "Edit functionality coming soon",
+                             });
+                           }}
+                         >
+                           <Edit className="w-4 h-4" />
+                         </Button>
+                         {order.is_deleted ? (
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             onClick={() => restoreOrder(order.id)}
+                           >
+                             <RotateCcw className="w-4 h-4" />
+                           </Button>
+                         ) : (
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             onClick={() => softDeleteOrder(order.id)}
+                           >
+                             <Archive className="w-4 h-4" />
+                           </Button>
+                         )}
+                       </div>
+                     </TableCell>
                   </TableRow>
                 ))}
                 {filteredOrders.length === 0 && (
@@ -1350,6 +1426,7 @@ const OrderManagement = () => {
 
   const renderDevicesView = () => {
     const filteredDevices = getFilteredDevices();
+    const availableDevices = filteredDevices.filter(device => device.status === 'Available' && !device.is_deleted);
     
     return (
       <div className="space-y-6">
@@ -1360,13 +1437,21 @@ const OrderManagement = () => {
             <div>
               <CardTitle>Devices</CardTitle>
               <CardDescription>
-                {filteredDevices.length} devices found
+                {filteredDevices.length} devices found | {availableDevices.length} available
               </CardDescription>
             </div>
-            <Button onClick={downloadDevicesCSV} variant="outline" size="sm">
-              <Download className="w-4 h-4 mr-2" />
-              Download CSV
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={downloadDevicesCSV} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Download CSV
+              </Button>
+              {availableDevices.length > 0 && (
+                <Button variant="outline" size="sm">
+                  <Package className="w-4 h-4 mr-2" />
+                  Available ({availableDevices.length})
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -1374,7 +1459,7 @@ const OrderManagement = () => {
                 <TableRow>
                   <TableHead>Product</TableHead>
                   <TableHead>Model</TableHead>
-                  <TableHead>Serial Number</TableHead>
+                  <TableHead>Serial Numbers</TableHead>
                   <TableHead>Warehouse</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Sales Order</TableHead>
@@ -1390,7 +1475,13 @@ const OrderManagement = () => {
                   <TableRow key={device.id}>
                     <TableCell>{device.product}</TableCell>
                     <TableCell>{device.model}</TableCell>
-                    <TableCell className="font-mono">{device.serial_number}</TableCell>
+                     <TableCell className="font-mono">
+                       <div className="flex flex-wrap gap-1">
+                         <Badge variant="outline" className="font-mono text-xs">
+                           {device.serial_number}
+                         </Badge>
+                       </div>
+                     </TableCell>
                     <TableCell>{device.warehouse}</TableCell>
                     <TableCell>
                       <Badge
@@ -1402,10 +1493,10 @@ const OrderManagement = () => {
                         {device.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-mono">{device.sales_order || 'N/A'}</TableCell>
-                    <TableCell>{device.deal_id || 'N/A'}</TableCell>
-                    <TableCell>{device.school_name || 'N/A'}</TableCell>
-                    <TableCell>{device.nucleus_id || 'N/A'}</TableCell>
+                     <TableCell className="font-mono">{device.sales_order || ''}</TableCell>
+                     <TableCell>{device.deal_id || ''}</TableCell>
+                     <TableCell>{device.school_name || ''}</TableCell>
+                     <TableCell>{device.nucleus_id || ''}</TableCell>
                     <TableCell>{new Date(device.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <Badge variant={device.is_deleted ? 'destructive' : 'default'}>
